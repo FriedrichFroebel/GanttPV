@@ -63,6 +63,10 @@
 # 041012 - moved AddTable, AddRow, and AddReportType here from "Add Earned Value Tracking.py"
 # 041031 - don't automatically add report rows for "deleted" records
 # 041203 - GetColumnHeader and GetCellValue logic moved here from GanttReport
+# 041231 - added xref to find first day of next month; changed GetColumnHead to work for months and quarters
+#		added routine to add months to a date index
+# 050101 - added hours units
+# 050104 - added backwards pass and float calculations
 
 # import calendar
 import datetime
@@ -111,6 +115,7 @@ Predecessor = { }
 DateConv = {}   # usage: index = DateConv['2004-01-01']
 DateIndex = []  # usage: date = DateIndex[1]
 DateInfo = []   # dayhours, cumhours, dow = DateInfo[1]
+DateNextMonth = {} # usage: index = DateNextMonth['2004-01']  # index is first day of next month
 
 # save impact of change until it can be addressed
 ChangedCalendar = False  # will affect calendar hours tables (gantt will have to be redone, too)
@@ -851,7 +856,7 @@ def ValidDate(value):
 
 def SetupDateConv():
     """" Setup tables that will be used for all schedule date calculations """
-    global DateConv, DateIndex, DateInfo
+    global DateConv, DateIndex, DateInfo, DateNextMonth
     # global ChangedCalendar
     # --->> don't use 'Update' in this processing <<----
     # dow = calendar.weekday(yyyy,mm,dd)  # monday = 0
@@ -872,6 +877,7 @@ def SetupDateConv():
     DateConv = {}  # usage: index = DateConv['2004-01-01']
     DateIndex = []  # usage: date = DateIndex[1]
     DateInfo = [] # dayhours, cumhours, dow = DateInfo[1]
+    DateNextMonth = {} # usage: index = DateNextMonth['2004-01']  # index is first day of next month
 
     FirstDate = Today
     LastDate = Today
@@ -917,6 +923,7 @@ def SetupDateConv():
             hxref[date] = hours
     cumhours = 0
     i = 0
+    lastmo = FirstDate[0:7] # keep track of prior month
     while d1 <= d2:
         date = d1.strftime("%Y-%m-%d")
         dow = i % 7
@@ -925,11 +932,26 @@ def SetupDateConv():
         DateConv[date] = i
         DateIndex.append(date)
         DateInfo.append( (dh, cumhours, dow), )  # work hours on date, work hours prior to date, day of week
+        if date[0:7] != lastmo:  # save first index of this month under prior month
+            DateNextMonth[lastmo] = i
+            lastmo = date[0:7]
         cumhours += dh; i += 1
         d1 += oneday
+    # if debug: print "DateNextMonth", DateNextMonth
 
     Other['BaseDate'] = DateIndex[0]  # The base date is a reflexion of the date conversion tables that are
                                       # in place. It must always reflect the current tables. It is not 'undo-able'
+
+def AddMonths(ix, months):
+    """
+    adds specified number of months to index
+    returns first day of month
+    """
+    cnt = 0
+    while cnt < months:
+        ix = DateNextMonth[DateIndex[ix][0:7]]
+        cnt += 1
+    return ix
 
 # -----------------
 def GetToday():
@@ -941,7 +963,7 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
     # Set the project start date (use specified date or today)  later may be adjusted by the tasks' start dates
     Today = GetToday()
     if debug: print "today", Today
-    ps = {}  # project start dates
+    ps = {}  # project start dates indexed by project id
     for k, v in Project.iteritems():
         if v.get('zzStatus', 'active') == 'deleted': continue
         sd = v.get('StartDate')
@@ -957,12 +979,14 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
     pre = {}  # task prerequisites indexed by task id number
     suc = {}  # task successors
     precnt = {}  # count of all unprocessed prerequisites
+    succnt = {}  # count of all unprocessed successors
     tpid = {}  # task's projectid
     for k, v in Task.iteritems():  # init dependency counts, xrefs, and start dates
         if v.get('zzStatus', 'active') == 'deleted': continue
         pid = v['ProjectID']
         if not pid: continue  # silently ignore tasks w/o projects
         precnt[k] = 0
+        succnt[k] = 0
         pre[k] = []
         suc[k] = []
         tpid[k] = pid
@@ -971,23 +995,25 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
         if tsd == "": tsd = None
         if tsd and tsd < ps[pid]: ps[pid] = tsd  # adjust project start date if task starts are earlier
     for k, v in Dependency.iteritems():
-        if debug: print "dependency record", v
+        # if debug: print "dependency record", v
         if v.get('zzStatus', 'active') == 'deleted': continue
         p = v['PrerequisiteID']
         t = v['TaskID']
         if suc.has_key(p) and pre.has_key(t):  # silently ignore dependencies for tasks not in list
             precnt[t] += 1
+            succnt[p] += 1
             pre[t].append(p)
             suc[p].append(t)
 
     # convert project start dates to hours format
-    ProjectStartHour = {}
-    for k, v in ps.iteritems():
+    ProjectStartHour = {}; ProjectEndHour = {}
+    for k, v in ps.iteritems():  # k = project id, v = start date
         if not DateConv.has_key(v): continue
         si = DateConv[v]  # get starting date index
         sh = DateInfo[si][1]  # get cum hours for start date
         ProjectStartHour[k] = sh
         if debug: "project, start hour", k, sh
+        ProjectEndHour[k] = 0  # prepare to save project end hour
 
     # forward pass
     moretodo = True
@@ -1026,7 +1052,9 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                 else:
                     ef = es + 8
 
-                # update database
+                if ef > ProjectEndHour[tpid[k]]: ProjectEndHour[tpid[k]] = ef  # keep track of project end date 
+
+                # update database -- doesn't use Update, but may in the future
                 Task[k]['hES'] = es
                 Task[k]['hEF'] = ef
                 Task[k]['CalculatedStartDate'], Task[k]['CalculatedStartDateHour'] = HoursToDate(es)
@@ -1042,6 +1070,48 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                 # tell successor that I'm ready
                 for t in suc[k]: precnt[t] -= 1
                 precnt[k] = -1
+    vs = precnt.values()
+    if debug: print "forward pass did ", vs.count(-1), " of ", len(vs), ". Probably a dependency loop."
+    if vs.count(-1) != len(vs): return  # didn't finish forward pass, skip backward pass
+
+    # backward pass
+    moretodo = True
+    while moretodo:
+        moretodo = False  # if it doesn't process at least one task per loop it will quit
+                                # dependency loops are silently ignored
+        for k, v in succnt.iteritems():  # k is the task id
+            if v == 0:  # all successors have been processed; set to -1 when done
+                moretodo = True  # will make an extra final pass through all tasks
+
+                # calculate late finish and free float for task
+                lf = ProjectEndHour[tpid[k]]
+                ses = lf  # successor early start
+                for t in suc[k]:
+                    ls = Task[t]["hLS"]
+                    if ls < lf: lf = ls
+                    es = Task[t]["hES"]
+                    if es < ses: ses = es
+                ff = ses - Task[k]["hEF"]
+
+                # calculate late start
+                td  = Task[k]["hEF"] - Task[k]["hES"]
+                ls = lf - td
+
+                # update database -- doesn't use Update, but may in the future
+                Task[k]['hLS'] = ls
+                Task[k]['hLF'] = lf
+                Task[k]['FreeFloatHours'] = ff
+                Task[k]['TotalFloatHours'] = ls - Task[k]["hES"]
+
+                # change['ID'] = k
+                # change['hLS'] = ls
+                # change['hLF'] = lf
+                # ---------- remember to add float lines
+                # Update(change, 0)
+
+                # tell predecessor that I'm ready
+                for t in pre[k]: succnt[t] -= 1
+                succnt[k] = -1
                                         
 # end of GanttCalculation
 # -----------------
@@ -1081,6 +1151,24 @@ def GetColumnHeader(colid, of):
                     if of == 0 or date[8:10] <= '07': label = date[5:7]
                     else: label = ''
                     label += '\n' +  date[8:10]
+                elif ctperiod == "Month":
+                    index -= int(DateIndex[ index ][8:10]) - 1  # convert to beginning of month
+                    date = DateIndex[ AddMonths(index, of) ]
+                    if of == 0 or date[5:7] == '01': label = date[2:4]
+                    else: label = ''
+                    label += '\n' +  date[5:7]
+                elif ctperiod == "Quarter":
+                    year = firstdate[0:4]
+                    mo = firstdate[5:7]
+                    if   mo <= "03": mo = "01"
+                    elif mo <= "06": mo = "04"
+                    elif mo <= "09": mo = "07"
+                    else:            mo = "10"
+                    index = DateConv[ year + '-' + mo + '-01' ]  # convert to beginning of quarter
+                    date = DateIndex[ AddMonths(index, of * 3) ]
+                    if of == 0 or date[5:7] == '01': label = date[2:4]
+                    else: label = ''
+                    label += '\n' +  date[5:7]
                 else:
                     label = "-"  # unknown time scale
             else: 
@@ -1118,6 +1206,7 @@ def GetCellValue(rowid, colid, of):
             rtid = Report[reportid].get('ReportTypeID')
             ctable = ReportType[rtid].get('Table' + t)
 
+            dt = ct.get('DataType')
             at = ct.get('AccessType')
             if rtable != ctable:
                 value = ''
@@ -1138,6 +1227,19 @@ def GetCellValue(rowid, colid, of):
                         value = Database[it][iid].get(ic, "")
                     else:
                         value = ""
+            if dt == 'u' and isinstance(value, int) and value > 0:
+                a, h = divmod(value, 8)
+                w, d = divmod(a, 5)
+                if w == 1: w = 0; d += 5 
+                if d == 1: d = 0; h += 8
+                value = []
+                if w: value.append(str(w) + 'w')
+                if d: value.append(str(d) + 'd')
+                if h: value.append(str(h) + 'h')
+                if len(value) > 1:
+                    value = ' '.join(value)
+                else:
+                    value = value[0]
         else:
             # ---- Here are some examples that this should handle ----
             # -- Report Type => Column Type --

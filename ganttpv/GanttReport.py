@@ -58,12 +58,20 @@
 #		time scale columns
 # 041126 - draw bars for week timescale
 # 041203 - moved get column header logic to Data
+# 041204 - default time scale first date to today
+# 050101 - previously added month  & quarter timescale
+# 050101 - added entry of duration units datatype
+# 050105 - fix part of bug: avoid report reset unless #rows or #columns changes (report un-scrolls when reset 
+#		this was a problem when entering start dates and durations); problem still exists when adding
+#		a column or a row, but at least it will be less annoying.
+# 050106 - fixed bug where deleted records threw off location of inserted rows
 
 import wx, wx.grid
 import datetime
 from wxPython.lib.dialogs import wxMultipleChoiceDialog
 import Data, UI, ID, Menu
 # import images
+import re
 
 debug = 1
 mac = 1
@@ -229,6 +237,23 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                     return
             else:
                 return
+        elif type == 'u': 
+            # good result has len = 6;  (2 = week, 3 = day, 4 = hour) or (5 = hour)
+            # empty input has len = 1 and value = ''
+            # bad result has len = 1 and value != ''
+            result = re.split(r"^\s*(\d+w)?\s*(\d+d)?\s*(\d+h)?\s*$|^(\d+)$", value)  
+            if len(result) == 6:
+                if result[4]:
+                    v = int(result[4])
+                else:
+                    v = 0
+                    if result[3]: v += int(result[3][:-1])
+                    if result[2]: v += int(result[2][:-1]) * 8
+                    if result[1]: v += int(result[1][:-1]) * 40
+            # elif len(result) == 1:  # this is already being checked for
+            #     v = ''
+            else: 
+                 return
         else: v = value
 
         change = {}
@@ -463,7 +488,7 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
         # if debug: print "draw ctname", ctname
         if ctname and ctname[-6:] != "/Gantt": return
 
-        fdate = rc.get('FirstDate')
+        fdate = rc.get('FirstDate') or Data.GetToday()
         if not fdate or not Data.DateConv.has_key(fdate): return  # this routine shouldn't be called for not gantt columns, but it is anyway - just ignore them
                                 # the program seems to be refreshing three times when one is needed (040505)
 
@@ -475,10 +500,30 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
         if ctname[0:3] == "Day":
             dh, cumh, dow = Data.DateInfo[ix  + of]
         elif ctname[0:4] == "Week":
+            ix -= Data.DateInfo[ ix ][2]  # convert to beginning of week
             dh, cumh, dow = Data.DateInfo[ix  + of * 7]
             dh2, cumh2, dow2 = Data.DateInfo[ix  + (of + 1) * 7]
             dh = cumh2 - cumh
+        elif ctname[0:3] == "Mon":
+            ix -= int(Data.DateIndex[ ix ][8:10]) - 1  # convert to beginning of month
+            ix = Data.AddMonths(ix, of)
+            dh, cumh, dow = Data.DateInfo[ix]
+            dh2, cumh2, dow2 = Data.DateInfo[Data. AddMonths(ix, 1)]
+            dh = cumh2 - cumh
+        elif ctname[0:3] == "Qua":
+            year = fdate[0:4]
+            mo = fdate[5:7]
+            if   mo <= "03": mo = "01"
+            elif mo <= "06": mo = "04"
+            elif mo <= "09": mo = "07"
+            else:            mo = "10"
+            ix = Data.DateConv[ year + '-' + mo + '-01' ]  # convert to beginning of quarter
+            ix = Data.AddMonths(ix, of * 3)
+            dh, cumh, dow = Data.DateInfo[ix]
+            dh2, cumh2, dow2 = Data.DateInfo[Data. AddMonths(ix, 3)]
+            dh = cumh2 - cumh
         else: return
+        # if debug: print 'ix, dh, cumh', ix, dh, cumh
 
         # clear the background
         dc.SetBackgroundMode(wx.SOLID)
@@ -827,7 +872,10 @@ class GanttReportFrame(UI.ReportFrame):
         s = self.Report.GetSelectedRows()  # current selection
 
         if len(s) == 0 or tb: rlist.append(newrowid)  # if no selection add to end
-        else: rlist.insert(min(s), newrowid)  # insert before first selected row
+        else:
+            rid = self.Report._table.rows[min(s)] # convert to rowid
+            pos = rlist.index(rid)  # find position of selected row (should always work)
+            rlist.insert(pos, newrowid)  # insert before first selected row
         Data.ReorderReportRows(self.ReportID, rlist)
 
         Data.SetUndo('Insert ' + ta)
@@ -1454,9 +1502,12 @@ class GanttReportFrame(UI.ReportFrame):
             return
         if all:  # shouldn't happen. All reports should be closed before opening a new database
             self.Report._table.UpdateDataPointers()
-        self.Report._table.UpdateColumnPointers()
-        self.Report._table.UpdateRowPointers()
-        self.Report.Reset()  # tell grid that the number of rows or columns has changed
+        sr = self.Report._table
+        rlen, clen = len(sr.rows), len(sr.columns)
+        sr.UpdateColumnPointers()
+        sr.UpdateRowPointers()
+        if rlen != len(sr.rows) or clen != len(sr.columns):
+            self.Report.Reset()  # tell grid that the number of rows or columns has changed
         if debug: print "End Update Gantt Report Pointers"
 
 #---------------------------------------------------------------------------
