@@ -55,6 +55,7 @@
 # 040520 - fixed bug where Assignment pointer was not set for Loaded files
 # 040605 - fixed bug in ReorderReportColumns to properly handle zzStatus == None
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
+# 040815 - FileName not set to None on New (because not on globals list)
 
 # import calendar
 import datetime
@@ -261,7 +262,7 @@ def SetTypes():
 
 def SetEmptyData():
     """ Create empty data tables that are ready to use """
-    global Database, UndoStack, RedoStack, ChangedData
+    global FileName, Database, UndoStack, RedoStack, ChangedData
     if debug: print "Start SetEmptyData"
 
     FileName = None  # Filename of current database
@@ -431,8 +432,10 @@ def SetEmptyData():
 # set up sample database
 def SetSampleData():
     """ Fill data tables with sample/demonstration data """
-    global Database, UndoStack, RedoStack, ChangedData
+    global FileName, Database, UndoStack, RedoStack, ChangedData
     if debug: print "Start SetSampleData"
+
+    FileName = None  # Filename of current database
     CreateEmptyTables()
     UndoStack = []
     RedoStack = []
