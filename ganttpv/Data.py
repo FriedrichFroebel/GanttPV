@@ -56,6 +56,7 @@
 # 040605 - fixed bug in ReorderReportColumns to properly handle zzStatus == None
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
 # 040815 - FileName not set to None on New (because not on globals list)
+# 040906 - add "project name / report name" to report titles
 
 # import calendar
 import datetime
@@ -582,6 +583,7 @@ def RefreshReports():
     for k, v in OpenReports.items():  # invalid reports might be closed during this loop
         if debug: print 'reportid', k
         if v == None: continue
+        if k != 1: v.SetReportTitle()  # only grid reports
         Menu.AdjustMenus(v)
         v.Refresh()
         #v.Report.RefreshReport()  # update displayed data
@@ -1240,6 +1242,7 @@ def OpenReport(id):  # this should not be called for report #1
     if r.get('FramePositionX'):
         frame.SetPosition(wx.Point(r['FramePositionX'], r['FramePositionY']))
         frame.SetSize(wx.Size(r['FrameSizeW'], r['FrameSizeH']))
+    frame.SetReportTitle()
     frame.Show(True)
 
 def CloseReport(id):

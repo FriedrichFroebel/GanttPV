@@ -45,6 +45,8 @@
 #               list of potential prerequisites
 # 040531 - in onDraw make sure all rectangles use new syntax for version 2.5
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
+# 040906 - changed OnInsertColumn to ignore Labels w/ value of None; display "project name / report name" in 
+#               report title.
 
 import wx, wx.grid
 from wxPython.lib.dialogs import wxMultipleChoiceDialog
@@ -622,6 +624,7 @@ class GanttReportFrame(UI.ReportFrame):
 
         # these three commands were moved out of UI.ReportFrame's init
         self.report_window = GanttChartGrid(self.Report_Panel, reportid)
+        self.title = None # force update of title
         self.report_window.Reset()
         self.Report = self.report_window
         self.ReportID = reportid
@@ -1017,7 +1020,7 @@ class GanttReportFrame(UI.ReportFrame):
             k = rr.get('NextRow', 0)
             loopcheck += 1
             if loopcheck > 100000:  break  # prevent endless loop if data is corrupted
-        menutext = [ Data.ColumnType[x].get('Label', Data.ColumnType[x].get('Name')) for x in menuid ]
+        menutext = [ (Data.ColumnType[x].get('Label') or Data.ColumnType[x].get('Name')) for x in menuid ]
         if debug: print menuid, menutext
         dlg = wxMultipleChoiceDialog(self,
                          "Select columns to add:",
@@ -1316,6 +1319,17 @@ class GanttReportFrame(UI.ReportFrame):
         evt.Skip()
 
     # -----------
+    def SetReportTitle(self):
+        rname = Data.Report[self.ReportID].get('Name') or "-"
+        pid = Data.Report[self.ReportID].get('ProjectID')
+        if pid:
+            pname = Data.Project[pid].get('Name') or "-"
+        else:
+            pname = "-"
+        title = pname + " / " + rname
+        if self.title != title:
+            self.SetTitle(title)
+
     def UpdatePointers(self, all=0):  # 1 = new database; 0 = changed report rows or columns
         if debug: print "Start Update Gantt Report Pointers"
         # don't refresh a report if the underlying report record is invalid
