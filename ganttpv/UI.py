@@ -299,7 +299,7 @@ class AboutDialog(wx.Dialog):
         kwds["style"] = wx.DEFAULT_DIALOG_STYLE
         wx.Dialog.__init__(self, *args, **kwds)
         self.Logo_Text = wx.StaticText(self, -1, "GanttPV")
-        self.About_Text = wx.StaticText(self, -1, "Copyright 2004 by Brian C. Christensen\n\nGanttPV (version 0.1) is an open source project scheduling tool. \n\n- Designed and coded by Brian C. Christensen\n- Icons by Alexander V. Christensen\n\nThanks to Alexander Christensen and Roy Heath for assistance \nwith the hard parts.\n\nGanttPV is distributed under the GNU GPL. See the file 'License.txt' \naccompanying this software for details. GanttPV comes with \nABSOLUTELY NO WARRANTY.\n\nIcons copyright 2004 by Alexander V. Christensen (used by permission)")
+        self.About_Text = wx.StaticText(self, -1, "Copyright 2004 by Brian C. Christensen\n\nGanttPV (version 0.2) is an open source project scheduling tool. \n\n- Designed and coded by Brian C. Christensen\n- Icons by Alexander V. Christensen\n\nThanks to Alexander Christensen and Roy Heath for assistance \nwith the hard parts.\n\nGanttPV is distributed under the GNU GPL. See the file 'License.txt' \naccompanying this software for details. GanttPV comes with \nABSOLUTELY NO WARRANTY.\n\nIcons copyright 2004 by Alexander V. Christensen (used by permission)")
         self.OK_Button = wx.Button(self, wx.ID_OK, "OK")
 
         self.__set_properties()

@@ -56,6 +56,7 @@
 # 041009 - change scroll to work w/ any time scale column
 # 041010 - change "column insert" to set # periods for all timescale columns; changes to allow edit of non-measurement 
 #		time scale columns
+# 041126 - draw bars for week timescale
 
 import wx, wx.grid
 import datetime
@@ -174,13 +175,18 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                 # print column  # it prints each column twice - why???
                 value = self.data[rtable][tid].get(column, "")
             elif at == 'i':
-                it, ic = ct.get('Name').split('/')  # indirect table & column
-                iid = self.data[rtable][tid].get(it+'ID')
-                # if debug: print "rtable, tid, it, ic, iid", rtable, tid, it, ic, iid
-                if iid:
-                    value = self.data[it][iid].get(ic, "")
-                else:
+                try:
+                    it, ic = ct.get('Name').split('/')  # indirect table & column
+                except ValueError:
+                    if debug: print "Indirect column w/o 'Table/Column', Name is: ", ct.get('Name')
                     value = ""
+                else:
+                    iid = self.data[rtable][tid].get(it+'ID')
+                    # if debug: print "rtable, tid, it, ic, iid", rtable, tid, it, ic, iid
+                    if iid:
+                        value = self.data[it][iid].get(ic, "")
+                    else:
+                        value = ""
         else:
             # ---- Here are some examples that this should handle ----
             # -- Report Type => Column Type --
@@ -593,7 +599,14 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
 
         ix = Data.DateConv[fdate]
         of = self.table.coloffset[col]
-        dh, cumh, dow = Data.DateInfo[ix  + of]
+
+        if ctname[0:3] == "Day":
+            dh, cumh, dow = Data.DateInfo[ix  + of]
+        elif ctname[0:4] == "Week":
+            dh, cumh, dow = Data.DateInfo[ix  + of * 7]
+            dh2, cumh2, dow2 = Data.DateInfo[ix  + (of + 1) * 7]
+            dh = cumh2 - cumh
+        else: return
 
         # clear the background
         dc.SetBackgroundMode(wx.SOLID)

@@ -61,6 +61,7 @@
 # 041001 - added FindID and FindIDs
 # 041009 - tightened edits on FirstDate and LastDate; added ValidDate() routine
 # 041012 - moved AddTable, AddRow, and AddReportType here from "Add Earned Value Tracking.py"
+# 041031 - don't automatically add report rows for "deleted" records
 
 # import calendar
 import datetime
@@ -167,16 +168,17 @@ def SetOther():
     Database['Other'] = Other  # for simpler access
     Database['NextID'] = NextID
     Database['Prerequisite'] = Database['Task']  # create a synonym for Task
-    Database['SpecialTables'] = ['Other', 'NextID', 'Prerequisite', 'SpecialTables', 'Indices', 'PriorMeasurement']
-    Database['Indices'] = { 
+# don't add these until Purge has been updated to recognize them
+#    Database['SpecialTables'] = ['Other', 'NextID', 'Prerequisite', 'SpecialTables', 'Indices', 'PriorMeasurement']
+#    Database['Indices'] = { 
 #        'Dependency': ('TaskID', 'PrerequisiteID'), 
 #        'Assignment': ('TaskID', 'ResourceID'),
 #        'Holiday': ('Date', ),
 #        'ProjectMeasurement': ('ProjectID', 'MeasurementID'),
 #        'MeasurementDependency': ('MeasurementID', 'PriorMeasurementID'),
-        'ProjectWeek': ('ProjectID', 'Week'),
-        'ProjectDay': ('ProjectID', 'Day'),
-    }
+#        'ProjectWeek': ('ProjectID', 'Week'),
+#        'ProjectDay': ('ProjectID', 'Day'),
+#    }
 
 def FillTable(name, t, Columns, Data):
     """ Utility routine to load sample (or initial) data into database """
@@ -1195,15 +1197,21 @@ def ReorderReportRows(reportid, rowids):
 
 # ----
 
-def AdjustReportRows(): # Reports rows may be affected by table adds or deletions
-#                               this routine makes sure that every report has the right number of rows with 
-#                               the right links to rows in other tables
+def AdjustReportRows(): 
+    """
+# Reports rows may be affected by table adds or deletions
+#   this routine makes sure that every report has the right number of rows with 
+#   the right links to rows in other tables
 # 1- build a list of all of the data that should appear in the report
 # 2- remove from that list everything that currently appears in the report
 # 3- add additional rows for everything that doesn't
 # question: should I have a flag in report rows for deleted records?
 # answer: no, let the individual reports check. they have to scan through all the rows anyway for hidden rows
 #
+# Don't add report rows for deleted records. This is to fix a bug of Insert, Undo, Redo which was adding
+#   a second report row for the same record.
+# Also not adding rows for children of deleted records. Don't know if this is necessary.
+    """
     if debug: print "Start AdjustReportRows"
     newrow = {'Table': 'ReportRow', 'TableName': None, 'TableID': None, 'NextRow': None}
     oldrow = {'Table': 'ReportRow', 'ID': None, 'NextRow': None}
@@ -1253,11 +1261,17 @@ def AdjustReportRows(): # Reports rows may be affected by table adds or deletion
                 rr = ReportRow[rowk]
                 t = rr['TableName']; id = rr['TableID']
                 if t == ta:
-                    shoulda.remove(id)  # remove from list all that have rows
+                    try:
+                        shoulda.remove(id)  # remove from list all that have rows
+                    except ValueError:  # occurs if something already in the list shouldn't be there
+                        if debug: print "id that doesn't belong was found in row (a of ab)", id
                     iref[id] = rowk  # insertion at beginning (may be overridden in elif)
                     tak = id # most recent table 'a' id, used for insertion at end
                 elif t == tb:
-                    shouldb.remove(id)  # remove from list all that have rows
+                    try:
+                        shouldb.remove(id)  # remove from list all that have rows
+                    except ValueError:  # occurs if something already in the list shouldn't be there
+                        if debug: print "id that doesn't belong was found in row (b of ab)", id
                     iref[tak] = rowk  # current guess at list end
                 # else: pass  # silently ignore any invalid table references
                             # I am also ignoring any incorrect report rows that don't appear in the linked list
@@ -1269,6 +1283,7 @@ def AdjustReportRows(): # Reports rows may be affected by table adds or deletion
             # add report rows for everything that is missing
             newrow['TableName'] = ta; newrow['NextRow'] = 0
             for ka in shoulda:
+                if Database[ta][ka].get("zzStatus") == "deleted": continue # -- don't add rows for deleted
                 newrow['TableID'] = ka
                 undo = Update(newrow, 0)  # don't allow undo on these
                 if saverowk == 0:  # this is the first report row
@@ -1283,8 +1298,10 @@ def AdjustReportRows(): # Reports rows may be affected by table adds or deletion
             newrow['TableName'] = tb;
             tableb = Database[tb]
             for kb in shouldb:
+                if tableb[kb].get("zzStatus") == "deleted": continue # -- don't add rows for deleted
                 tak = tableb[kb].get(ta + "ID")  # table 'a' id record of 'b's parent
                 if not tak: continue  # if the key is NULL or 0
+                if Database[ta][tak].get("zzStatus") == "deleted": continue # -- don't add rows for deleted
                 insertafter = iref[tak]  # insert after this row
                 nextr = ReportRow[insertafter].get('NextRow', 0)
                 newrow['TableID'] = kb; newrow['NextRow'] = nextr
@@ -1311,7 +1328,10 @@ def AdjustReportRows(): # Reports rows may be affected by table adds or deletion
                 saverowk = rowk
                 rr = ReportRow[rowk]
                 id = rr['TableID']
-                shoulda.remove(id)  # remove from list all that have rows
+                try:
+                    shoulda.remove(id)  # remove from list all that have rows
+                except ValueError:  # occurs if something already in the list shouldn't be there
+                    if debug: print "id that doesn't belong was found in row", id
                 rowk = rr.get('NextRow', 0)
                 loopguard += 1
                 if loopguard > 10000: break
@@ -1320,6 +1340,7 @@ def AdjustReportRows(): # Reports rows may be affected by table adds or deletion
             # add report rows for everything that is missing
             newrow['TableName'] = ta; newrow['NextRow'] = 0
             for ka in shoulda:
+                if Database[ta][ka].get("zzStatus") == "deleted": continue # -- don't add rows for deleted
                 newrow['TableID'] = ka
                 undo = Update(newrow, 0)  # don't allow undo on these
                 if saverowk == 0:  # this is the first report row

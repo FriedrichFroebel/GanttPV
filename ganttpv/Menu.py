@@ -369,11 +369,12 @@ def AdjustMenus(self):
         if debug: "item", item
         isSel = item != None
         if debug: "isSel", isSel
-        selReport = False; selProject = False
-        if isSel:
-            rr = self.Report.reportrow[self.Report.rows[item]]
-            selReport = rr['TableName'] == 'Report'
-            selProject = rr['TableName'] == 'Project'
+        # needed only if menus change depending on whether project or report is selected
+        # selReport = False; selProject = False
+        # if isSel and item < len(self.Report.rows):  # when last report is selected and a report is deleted "item" value could cause fault
+        #     rr = self.Report.reportrow[self.Report.rows[item]]
+        #     selReport = rr['TableName'] == 'Report'
+        #     selProject = rr['TableName'] == 'Project'
         
         self.main_toolbar.EnableTool(ID.NEW_PROJECT, True)
         self.main_toolbar.EnableTool(ID.NEW_REPORT, isSel)
