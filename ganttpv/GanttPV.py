@@ -43,6 +43,7 @@
 # 040616 - change Target End Date column width to 120 (doesn't show heading as two lines for some reason)
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
 # 040716 - minor fix to tab changes
+# 040914 - ReportTypes can be flagged as all/each/both for all projects or individual project use
 
 import wx
 import wx.grid
@@ -359,7 +360,8 @@ class ProjectReportFrame(UI.MainFrame):
                 id = rr.get('TableID')
                 if (not hidden) and table == 'ReportType' and id:
                     active = Data.ReportType[id].get('zzStatus', 'active') == 'active'
-                    if active :
+                    allproj = (Data.ReportType[id].get('AllOrEach') or 'all') in ['all', 'both']
+                    if active and allproj :
                         menuid.append( id )
                 k = rr.get('NextRow', 0)
                 loopcheck += 1
@@ -384,7 +386,8 @@ class ProjectReportFrame(UI.MainFrame):
                 id = rr.get('TableID')
                 if (not hidden) and table == 'ReportType' and id:
                     active = Data.ReportType[id].get('zzStatus', 'active') == 'active'
-                    if active and Data.ReportType[id].get('TableA') == "Task":
+                    eachproj = (Data.ReportType[id].get('AllOrEach') or 'all') in ['each', 'both']
+                    if active and (eachproj or Data.ReportType[id].get('TableA') == "Task"):
                         menuid.append( id )
                 k = rr.get('NextRow', 0)
                 loopcheck += 1
@@ -657,7 +660,7 @@ class ProjectReportFrame(UI.MainFrame):
 
     def OnMove(self, event):
         pos = event.GetPosition()
-        if debug: print pos
+        # if debug: print pos
         r = Data.Database['Report'][self.ReportID]
         r['FramePositionX'] = pos.x
         r['FramePositionY'] = pos.y
@@ -696,7 +699,7 @@ if debug: print "Test to start main loop"
 
 if __name__ == "__main__":
     if debug: print "Start main loop ------------------------- "
-
+    if debug: print "sys.argv", sys.argv
     # ex_name = 'myprogram.exe' 
     # if mac:
     #    ex_name = 'GanttPV.app' 
@@ -720,6 +723,9 @@ if __name__ == "__main__":
     Data.LoadOption(Data.Path)
 
     GanttPV = GanttPVApp(0)
+    # if len(sys.argv) == 3:
+    #     Data.OpenFile(sys.argv[2])
+
     GanttPV.MainLoop()
     if debug: print "End main loop ---------------------- "
 

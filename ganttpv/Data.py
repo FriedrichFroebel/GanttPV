@@ -58,6 +58,7 @@
 # 040815 - FileName not set to None on New (because not on globals list)
 # 040906 - add "project name / report name" to report titles
 # 040928 - Alexander - when making DateConv, ignores incorrectly formatted dates; afterward, ignores dates not present in DateConv
+# 041001 - added FindID and FindIDs
 
 # import calendar
 import datetime
@@ -67,7 +68,7 @@ import Menu
 import GanttReport
 # import Main
 
-debug = 0
+debug = 1
 if debug: print "load Data.py"
 # On making changes in GanttPV
 # 1- Use Update for all changes
@@ -164,6 +165,16 @@ def SetOther():
     Database['Other'] = Other  # for simpler access
     Database['NextID'] = NextID
     Database['Prerequisite'] = Database['Task']  # create a synonym for Task
+    Database['SpecialTables'] = ['Other', 'NextID', 'Prerequisite', 'SpecialTables', 'Indices', 'PriorMeasurement']
+    Database['Indices'] = { 
+#        'Dependency': ('TaskID', 'PrerequisiteID'), 
+#        'Assignment': ('TaskID', 'ResourceID'),
+#        'Holiday': ('Date', ),
+#        'ProjectMeasurement': ('ProjectID', 'MeasurementID'),
+#        'MeasurementDependency': ('MeasurementID', 'PriorMeasurementID'),
+        'ProjectWeek': ('ProjectID', 'Week'),
+        'ProjectDay': ('ProjectID', 'Day'),
+    }
 
 def FillTable(name, t, Columns, Data):
     """ Utility routine to load sample (or initial) data into database """
@@ -522,6 +533,28 @@ def SetSampleData():
     SetTypes()
     SetOther()
     if debug: print "End SetSampleData"
+
+# ---------
+def FindID(table, field1, value1, field2, value2):
+    # if debug: print "start FindID", table, field1, value1, field2, value2
+    if not Database.has_key(table): return 0
+    if not field2:
+        for k, v in Database[table].iteritems():
+            if (v.get(field1) == value1): return k
+    else:
+        for k, v in Database[table].iteritems():
+            if (v.get(field1) == value1) and (v.get(field2) == value2): return k
+
+def FindIDs(table, field1, value1, field2, value2):
+    if not Database.has_key(table): return []
+    result = []
+    if not field2:
+        for k, v in Database[table].iteritems():
+            if (v.get(field1) == value1): result.append(k)
+    else:
+        for k, v in Database[table].iteritems():
+            if (v.get(field1) == value1) and (v.get(field2) == value2): result.append(k)
+    return result
 
 # --------------------- ( is this used for anything? )
 def SetDependencyXref():
@@ -1171,7 +1204,7 @@ def AdjustReportRows(): # Reports rows may be affected by table adds or deletion
             else:
                 shoulda = Database[ta].keys()
 
-            if debug: print "shoulda", shoulda
+            if debug: print "tablea", ta, "shoulda", shoulda
             # compare that with everything that is already there
             rowk = r.get('FirstRow', 0)
             loopguard = 0
@@ -1334,6 +1367,14 @@ def SaveContents(self):
     f.close()
 
     ChangedData = False
+
+def OpenFile(name):
+    global FileName
+    title = os.path.basename(name)
+    FileName = name
+    OpenReports[1].SetTitle(title)
+    LoadContents(None)
+    OpenReports[1].Show(True)
 
 def AskIfUserWantsToSave(self, action):
     """ Give the user the opportunity to save the current document.

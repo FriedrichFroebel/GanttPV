@@ -67,13 +67,7 @@ def doOpen(self, event):
     os.chdir(curDir)
 
     Data.CloseReports()         # close all open reports except #1
-
-    title = os.path.basename(fileName)
-
-    Data.FileName = fileName
-    Data.OpenReports[1].SetTitle(os.path.basename(fileName))
-    Data.LoadContents(self)
-    Data.OpenReports[1].Show(True)
+    Data.OpenFile(fileName)
 
 # I'm going to leave the close logic in each frame for the present
 # def doClose(self, event):  # what should I close? the report? all reports? 

@@ -47,6 +47,11 @@
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
 # 040906 - changed OnInsertColumn to ignore Labels w/ value of None; display "project name / report name" in 
 #               report title.
+# 040914 - handle indirect display if no ID is found; assign project id when inserting rows into reports that can be each.
+# 040915 - allow entry of floating point numbers (type "f")
+# 040918 - add week time scale; default FirstDate in column type to today or this week
+# 040928 - Alexander - ignores dates not present in Data.DateConv; prevents entry of incorrectly formatted dates
+# 041001 - display measurements in weekly time scale
 # 040928 - Alexander - ignores dates not present in Data.DateConv; prevents entry of incorrectly formatted dates
 
 import wx, wx.grid
@@ -100,15 +105,28 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                 ct = self.columntype[self.ctypes[col]]  # get column type record that corresponds to this column
                 label = ct.get('Label') or ct.get('Name')
         else:
-            dateConvIndex = self.reportcolumn[self.columns[col]]['FirstDate']
-            if not Data.DateConv.has_key(dateConvIndex):
-                return '--'
-            index = Data.DateConv[dateConvIndex]
-            date = Data.DateIndex[ index + of ]
-            dow = Data.DateInfo[ index + of ][2]
-            if of == 0 or date[8:10] == '01': label = date[5:7]
-            else: label = 'MTWHFSS'[dow]
-            label += '\n' +  date[8:10]
+            ct = self.columntype[self.ctypes[col]]  # get column type record that corresponds to this column
+            ctperiod, ctfield = ct.get('Name').split("/")
+
+            firstdate = self.reportcolumn[self.columns[col]].get('FirstDate')
+            if not Data.DateConv.has_key(firstdate): firstdate = Data.GetToday()
+            index = Data.DateConv[ firstdate ]
+
+            if ctperiod == "Day":
+                date = Data.DateIndex[ index + of ]
+                if of == 0 or date[8:10] == '01': label = date[5:7]
+                else: 
+                    dow = Data.DateInfo[ index + of ][2]
+                    label = 'MTWHFSS'[dow]
+                label += '\n' +  date[8:10]
+            elif ctperiod == "Week":
+                index -= Data.DateInfo[ index ][2]  # convert to beginning of week
+                date = Data.DateIndex[ index + (of * 7) ]
+                if of == 0 or date[8:10] <= '07': label = date[5:7]
+                else: label = ''
+                label += '\n' +  date[8:10]
+            else:
+                label = "-"
         return label
 
     # default behavior is to number the rows  ---- option to include the task name ?????
@@ -118,13 +136,13 @@ class GanttChartTable(wx.grid.PyGridTableBase):
 
     def GetValue(self, row, col):
         of = self.coloffset[col]
+        ct = self.columntype[self.ctypes[col]]
         if of == -1:
             rr = self.reportrow[self.rows[row]]
             rtable = rr.get('TableName')
             tid = rr['TableID']  # was 'TaskID' -> changed to generic ID
 
             # rc = self.reportcolumn[self.columns[col]]
-            ct = self.columntype[self.ctypes[col]]
 
             t = ct.get('T', 'X')
             rtid = self.report.get('ReportTypeID')
@@ -140,42 +158,97 @@ class GanttChartTable(wx.grid.PyGridTableBase):
             elif at == 'i':
                 it, ic = ct.get('Name').split('/')  # indirect table & column
                 iid = self.data[rtable][tid].get(it+'ID')
-                if debug: print "rtable, tid, it, ic, iid", rtable, tid, it, ic, iid
-                value = self.data[it][iid].get(ic, "")
+                # if debug: print "rtable, tid, it, ic, iid", rtable, tid, it, ic, iid
+                if iid:
+                    value = self.data[it][iid].get(ic, "")
+                else:
+                    value = ""
         else:
-            value = 'gantt'
+            # ---- Here are some examples that this should handle ----
+            # -- Report Type => Column Type --
+            # TaskDay => Day/Gantt, Day/Hours
+            # ResourceDay => Day/Hours
+            # ProjectDay or ProjectWeek => Day/Measurement, Week/Measurement
+            # TaskWeek => Week/PercentComplete, Week/Effort
+            # ResourceWeek => Week/Effort
+
+            ctperiod, ctfield = ct.get('Name').split("/")
+
+            if ctfield == "Gantt":  # don't display a value
+                value = 'gantt'
+            else:  # table name, field name, time period, and record id
+                rr = self.reportrow[self.rows[row]]
+                tablename = rr.get('TableName')
+                tid = rr['TableID']
+                if ctfield == 'Measurement':  # find field name
+                    mid = Data.Database[tablename][tid].get('MeasurementID')  # point at measurement record
+                    if mid: 
+                        fieldname = Data.Database['Measurement'][mid].get('Name')  # measurement name == field name
+                    else:
+                        fieldname = None
+                    tid = Data.Database[tablename][tid].get('ProjectID')  # point at measurement record
+                    tablename = 'Project'  # only supports project measurements
+                else:
+                    fieldname = ctfield
+
+                # find the period date
+                firstdate = self.reportcolumn[self.columns[col]].get('FirstDate')
+                if not Data.DateConv.has_key(firstdate): firstdate = Data.GetToday()
+                index = Data.DateConv[ firstdate ]
+                if ctperiod == "Day":
+                    date = Data.DateIndex[ index + of ]
+                elif ctperiod == "Week":
+                    index -= Data.DateInfo[ index ][2]  # convert to beginning of week
+                    date = Data.DateIndex[ index + (of * 7) ]
+                else:
+                    date = None
+                timename = tablename + ctperiod
+
+                timeid = Data.FindID(timename, tablename + "ID", tid, ctperiod, date)
+                # if debug: print "timeid", timeid
+                if timeid:
+                    value = Data.Database[timename][timeid].get(fieldname)
+                    # if debug: print "timename, timeid, fieldname, value: ", timename, timeid, fieldname, value
+                else:
+                    value = None
+                    # if debug: print "didn't find timeid", timeid, value
+
         if value == None: value = ''
         return value
 
     def GetRawValue(self, row, col):  # same as GetValue  ( I don't know the difference. The example I'm following made them the same. )
-        of = self.coloffset[col]
-        if of == -1:
-            rr = self.reportrow[self.rows[row]]
-            rtable = rr.get('TableName')
-            tid = rr['TableID']  # was 'TaskID' -> changed to generic ID
+        value = GetValue(self, row, col)
+#        of = self.coloffset[col]
+#        if of == -1:
+#            rr = self.reportrow[self.rows[row]]
+#            rtable = rr.get('TableName')
+#            tid = rr['TableID']  # was 'TaskID' -> changed to generic ID
 
-            # rc = self.reportcolumn[self.columns[col]]
-            ct = self.columntype[self.ctypes[col]]
+#            # rc = self.reportcolumn[self.columns[col]]
+#            ct = self.columntype[self.ctypes[col]]
 
-            t = ct.get('T', 'X')
-            rtid = self.report.get('ReportTypeID')
-            ctable = Data.ReportType[rtid].get('Table' + t)
+#            t = ct.get('T', 'X')
+#            rtid = self.report.get('ReportTypeID')
+#            ctable = Data.ReportType[rtid].get('Table' + t)
 
-            at = ct.get('AccessType')
-            if rtable != ctable:
-                value = ''
-            elif at == 'd':
-                column = ct.get('Name')
-                # print column  # it prints each column twice - why???
-                value = self.data[rtable][tid].get(column, "")
-            elif at == 'i':
-                it, ic = ct.get('Name').split('/')  # indirect table & column
-                iid = self.data[rtable][tid].get(it+'ID')
-                if debug: print "rtable, tid, it, ic, iid", rtable, tid, it, ic, iid
-                value = self.data[it][iid].get(ic, "")
-        else:
-            value = 'gantt'
-        if value == None: value = ''
+#            at = ct.get('AccessType')
+#            if rtable != ctable:
+#                value = ''
+#            elif at == 'd':
+#                column = ct.get('Name')
+#                # print column  # it prints each column twice - why???
+#                value = self.data[rtable][tid].get(column, "")
+#            elif at == 'i':
+#                it, ic = ct.get('Name').split('/')  # indirect table & column
+#                iid = self.data[rtable][tid].get(it+'ID')
+#                # if debug: print "rtable, tid, it, ic, iid", rtable, tid, it, ic, iid
+#                if iid:
+#                    value = self.data[it][iid].get(ic, "")
+#                else:
+#                    value = ""
+#        else:
+#            value = 'gantt'
+#        if value == None: value = ''
         return value
 
     def SetValue(self, row, col, value):
@@ -197,6 +270,11 @@ class GanttChartTable(wx.grid.PyGridTableBase):
         elif type == 'i': 
             try:
                 v = int(value)
+            except ValueError:  # should I display an error message?
+                return
+        elif type == 'f': 
+            try:
+                v = float(value)
             except ValueError:  # should I display an error message?
                 return
         elif type == 'd':
@@ -222,9 +300,13 @@ class GanttChartTable(wx.grid.PyGridTableBase):
         elif at == 'i':
             table, column = ct.get('Name').split('/')  # indirect table & column
             id = self.data[rtable][tid].get(table+'ID')
-
+        elif at == 's':
+            # determine whether record already exists, if not then add it -- somewhere =======
+            id = None  # this section needs to be reworked  ================================
+        else: id = None
+        if not id: return  # don't make update if ID is invalid -- what else has to be changed???
         change = {}
-        change['ID'] = id  # if Task table, else find ID
+        change['ID'] = id
         change['Table'] = table
         change[column] = v
         Data.Update(change)
@@ -334,7 +416,10 @@ class GanttChartTable(wx.grid.PyGridTableBase):
         for col in range(len(self.columns)):
             attr = wx.grid.GridCellAttr()
             of = self.coloffset[col]
-            if of > -1:
+            ct = self.columntype[self.ctypes[col]]  # if the column is in a report it will always have a type
+            ctname = ct.get('Name')
+            # if ctfield != "Gantt": return
+            if of > -1 and ctname and ctname[-6:] == "/Gantt":
                 renderer = GanttCellRenderer(self)
                 if renderer.colSize:
                     grid.SetColSize(col, renderer.colSize)
@@ -418,6 +503,12 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
         # if debug: print 'col & colid', col, self.table.columns[col]
         rc = self.table.reportcolumn[self.table.columns[col]]
         # if debug: print 'rc', rc
+
+        # draw bar chart or not
+        # ct = self.table.columntype[self.table.ctypes[col]]  # if the column is in a report it will always have a type
+        # ctperiod, ctfield = ct.get('Name').split("/")
+        # if ctfield != "Gantt": return
+
         fdate = rc.get('FirstDate')
         if not fdate or not Data.DateConv.has_key(fdate): return  # this routine shouldn't be called for not gantt columns, but it is anyway - just ignore them
                                 # the program seems to be refreshing three times when one is needed (040505)
@@ -751,9 +842,10 @@ class GanttReportFrame(UI.ReportFrame):
         rt = Data.ReportType[r['ReportTypeID']]
         ta = rt['TableA']
         tb = rt.get('TableB')  # if two table report all inserts go at the end (less confusing to user)
+        each = rt.get('AllOrEach') in ['both', 'each']
 
         change = { 'Table': ta, 'Name': '--' }  # new record because no ID specified
-        if ta == 'Task':
+        if ta == 'Task' or each:
             pid = r.get('ProjectID')
             change['ProjectID'] = pid 
         elif ta in ('Report', 'ReportColumn', 'ReportRow', 'ReportType', 'ColumnType'): return  # need special handling
@@ -1250,16 +1342,16 @@ class GanttReportFrame(UI.ReportFrame):
 
     # Edit Menu
     def doUndo(self, event):
-        if debug: print Data.ReportColumn[11]
-        if debug: print Data.ReportColumn[13]
+        # if debug: print Data.ReportColumn[11]
+        # if debug: print Data.ReportColumn[13]
         Menu.doUndo(self, event)
-        if debug: print "GetColumnList", Data.GetColumnList(self.ReportID)
-        if debug: print Data.ReportColumn[11]
-        if debug: print Data.ReportColumn[13]
+        # if debug: print "GetColumnList", Data.GetColumnList(self.ReportID)
+        # if debug: print Data.ReportColumn[11]
+        # if debug: print Data.ReportColumn[13]
 
     def doRedo(self, event):
         Menu.doRedo(self, event)
-        if debug: print "GetColumnList", Data.GetColumnList(self.ReportID)
+        # if debug: print "GetColumnList", Data.GetColumnList(self.ReportID)
 
     # Script Menu
     def doFindScripts(self, event):
