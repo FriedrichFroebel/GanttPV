@@ -32,6 +32,7 @@
 # 040520 - Added final slash to Help and Forum URL's
 # 040605 - changed URL directory names to lower case
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
+# 041013 - in Save As set title of main window to file name; in New set title of main window to "Main".
 
 import wx, os, webbrowser
 import Data, ID, UI
@@ -52,6 +53,7 @@ def doNew(self, event):
         Data.CloseReports()# close all open reports except #1
         Data.SetEmptyData()
         Data.MakeReady()
+        Data.OpenReports[1].SetTitle("Main")
     if debug: print "End doNew"
 
 def doOpen(self, event):
@@ -105,7 +107,7 @@ def doSaveAs(self, event):
     os.chdir(curDir)
 
     title = os.path.basename(fileName)
-    self.SetTitle(title)
+    Data.OpenReports[1].SetTitle(title)
 
     Data.FileName = fileName
     Data.SaveContents(self)

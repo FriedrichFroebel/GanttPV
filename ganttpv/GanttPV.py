@@ -651,7 +651,7 @@ class ProjectReportFrame(UI.MainFrame):
 
     def OnSize(self, event):
         size = event.GetSize()
-        if debug: print size
+        # if debug: print size
         r = Data.Database['Report'][self.ReportID]
         r['FrameSizeW'] = size.width
         r['FrameSizeH'] = size.height

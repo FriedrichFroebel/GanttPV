@@ -59,6 +59,8 @@
 # 040906 - add "project name / report name" to report titles
 # 040928 - Alexander - when making DateConv, ignores incorrectly formatted dates; afterward, ignores dates not present in DateConv
 # 041001 - added FindID and FindIDs
+# 041009 - tightened edits on FirstDate and LastDate; added ValidDate() routine
+# 041012 - moved AddTable, AddRow, and AddReportType here from "Add Earned Value Tracking.py"
 
 # import calendar
 import datetime
@@ -535,6 +537,91 @@ def SetSampleData():
     if debug: print "End SetSampleData"
 
 # ---------
+# Needed changes  <----
+# set "Also" --> replace name with ID   (done)
+# don't change labels if they already exist  (done)
+
+def AddTable(name):
+    # add the table if it doesn't already exist
+    # (Note: this part of the change isn't reversed by Undo.)
+    if name and not Database.has_key(name):
+        Database[name] = {}
+        Database['NextID'][name] = 1
+
+def AddRow(change):  # add or update row
+    changeTable = change["Table"]
+    changeName = change["Name"]
+    cid = 0
+    for k, v in Database[changeTable].items():
+        if v.get('Name') == changeName:
+            cid = k
+            break
+    if cid:  # already exists
+        change['ID'] = cid
+    Update(change)
+
+def AddReportType(reportType, columnTypes):
+
+    # should edit to make sure all values are valid
+
+    # convert "Also" name to record id
+    also = reportType.get("Also")
+    if also:
+        alsoid = 0
+        for k, v in Database['ReportType'].items():
+            if v.get('Name') == also:
+                alsoid = k
+                break
+        if alsoid:
+            reportType['Also'] = alsoid
+        else:
+            if debug: print "couldn't convert Also value", also
+            del reportType['Also']
+
+    # Make sure tables exist that are referenced by ReportType
+    tableNames =  map( reportType.get, ["TableA", "TableB"] )
+    for name in tableNames:
+	AddTable(name)
+
+    # Either add or update ReportType
+    reportTypeName = reportType["Name"]
+    rtid = 0
+    for k, v in Database['ReportType'].items():
+        if v.get('Name') == reportTypeName:
+            rtid = k
+            break
+    change = reportType
+    change["Table"] = 'ReportType'
+    if rtid:  # already exists
+        change['ID'] = rtid
+        Update(change)
+        oldRT = True
+    else:  # new
+        undo = Update(change) 
+        rtid = undo['ID']
+        oldRT = False
+
+    # expects a list of ColumnTypes
+    for change in columnTypes:
+        typeName = change["Name"]
+
+        # check whether column type already exists
+        ctid = 0
+        if oldRT:
+            for k, v in Database['ColumnType'].items():
+                if v.get('ReportTypeID') == rtid and v.get('Name') == typeName:
+                    ctid = k
+                    break
+        if ctid: 
+            change['ID'] = ctid  # if column type already exists, change this to an update instead of an add
+            if change.has_key('Label'): del change['Label']  # don't change label on existing column type, is test necessary?
+        change["Table"] = "ColumnType"
+        change["ReportTypeID"] = rtid
+
+        # check for required fields ??
+        Update(change) 
+
+# ---------
 def FindID(table, field1, value1, field2, value2):
     # if debug: print "start FindID", table, field1, value1, field2, value2
     if not Database.has_key(table): return 0
@@ -749,6 +836,16 @@ def HoursToDate(hours):
     while not (DateInfo[d][1] <= hours < (DateInfo[d][0] + DateInfo[d][1])): d += i
     return DateIndex[d], hours - DateInfo[d][1]
 
+def ValidDate(value):
+    if value < '1901-01-01':
+        return ""
+    elif len(value) == 10 and value[4] == '-' and value[7] == '-':
+        try:
+            datetime.date(int(value[0:4]),int(value[5:7]), int(value[8:10]))
+        except ValueError:
+            return ""
+    return value
+
 def SetupDateConv():
     """" Setup tables that will be used for all schedule date calculations """
     global DateConv, DateIndex, DateInfo
@@ -781,23 +878,23 @@ def SetupDateConv():
     # find the earliest and last dates that have been specified anywhere
     for p in Project.values():
         d = p.get('StartDate')
-        if d and d != '':
-            if d < FirstDate and StringToDate(d): FirstDate = d
-            elif d > LastDate and StringToDate(d): LastDate = d
+        if d:
+            if d < FirstDate and ValidDate(d): FirstDate = d
+            elif d > LastDate and ValidDate(d): LastDate = d
         d = p.get('TargetEndDate')
-        if d and d != '':
-            if d < FirstDate and StringToDate(d): FirstDate = d
-            elif d > LastDate and StringToDate(d): LastDate = d
+        if d:
+            if d < FirstDate and ValidDate(d): FirstDate = d
+            elif d > LastDate and ValidDate(d): LastDate = d
 
     for p in Task.values():
         d = p.get('StartDate')
-        if d and d != '':
-            if d < FirstDate and StringToDate(d): FirstDate = d
-            elif d > LastDate and StringToDate(d): LastDate = d
+        if d:
+            if d < FirstDate and ValidDate(d): FirstDate = d
+            elif d > LastDate and ValidDate(d): LastDate = d
         d = p.get('EndDate')
-        if d and d != '':
-            if d < FirstDate and StringToDate(d): FirstDate = d
-            elif d > LastDate and StringToDate(d): LastDate = d
+        if d:
+            if d < FirstDate and ValidDate(d): FirstDate = d
+            elif d > LastDate and ValidDate(d): LastDate = d
 
     d1 = StringToDate(FirstDate)
     d1 = makeFOW(d1) - (oneweek * 50)  # allow 50 weeks of room before the first date in the file
@@ -1335,7 +1432,7 @@ def MakeReady():
                 Menu.AdjustMenus(frame)
                 frame.Refresh()
                 frame.Report.Refresh()  # update displayed data (needed for Main on Windows, not needed on Mac)
-        elif Database['Report'][k].get('Open', False):  OpenReport(k)
+        elif Database['Report'][k].get('Open'):  OpenReport(k)
     UndoStack  = []
     RedoStack = []
     ChangedData = False  # true if database needs to be saved

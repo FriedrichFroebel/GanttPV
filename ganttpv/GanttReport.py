@@ -52,7 +52,10 @@
 # 040918 - add week time scale; default FirstDate in column type to today or this week
 # 040928 - Alexander - ignores dates not present in Data.DateConv; prevents entry of incorrectly formatted dates
 # 041001 - display measurements in weekly time scale
-# 040928 - Alexander - ignores dates not present in Data.DateConv; prevents entry of incorrectly formatted dates
+# 041009 - Alexander & Brian - default dates to current year and month; Brian - change SetValue to work on measurement time scale data
+# 041009 - change scroll to work w/ any time scale column
+# 041010 - change "column insert" to set # periods for all timescale columns; changes to allow edit of non-measurement 
+#		time scale columns
 
 import wx, wx.grid
 import datetime
@@ -112,21 +115,36 @@ class GanttChartTable(wx.grid.PyGridTableBase):
             if not Data.DateConv.has_key(firstdate): firstdate = Data.GetToday()
             index = Data.DateConv[ firstdate ]
 
-            if ctperiod == "Day":
-                date = Data.DateIndex[ index + of ]
-                if of == 0 or date[8:10] == '01': label = date[5:7]
-                else: 
-                    dow = Data.DateInfo[ index + of ][2]
-                    label = 'MTWHFSS'[dow]
-                label += '\n' +  date[8:10]
-            elif ctperiod == "Week":
-                index -= Data.DateInfo[ index ][2]  # convert to beginning of week
-                date = Data.DateIndex[ index + (of * 7) ]
-                if of == 0 or date[8:10] <= '07': label = date[5:7]
-                else: label = ''
-                label += '\n' +  date[8:10]
-            else:
-                label = "-"
+            if ctfield == 'Gantt':
+                if ctperiod == "Day":
+                    date = Data.DateIndex[ index + of ]
+                    if of == 0 or date[8:10] == '01': label = date[5:7]
+                    else: 
+                        dow = Data.DateInfo[ index + of ][2]
+                        label = 'MTWHFSS'[dow]
+                    label += '\n' +  date[8:10]
+                elif ctperiod == "Week":
+                    index -= Data.DateInfo[ index ][2]  # convert to beginning of week
+                    date = Data.DateIndex[ index + (of * 7) ]
+                    if of == 0 or date[8:10] <= '07': label = date[5:7]
+                    else: label = ''
+                    label += '\n' +  date[8:10]
+                else:
+                    label = "-"  # unknown time scale
+            else: 
+                if ctperiod == "Day":
+                    date = Data.DateIndex[ index + of ]
+                elif ctperiod == "Week":
+                    index -= Data.DateInfo[ index ][2]  # convert to beginning of week
+                    date = Data.DateIndex[ index + (of * 7) ]
+                else:
+                    return "-"  # unknown time scale
+
+                if of == 0:
+                    label = ctfield[:5]  # ??try column width mod 8??
+                else:
+                    label = ''
+                label += '\n' + date[5:7] + "/" + date[8:10]
         return label
 
     # default behavior is to number the rows  ---- option to include the task name ?????
@@ -204,11 +222,12 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                     date = None
                 timename = tablename + ctperiod
 
-                timeid = Data.FindID(timename, tablename + "ID", tid, ctperiod, date)
+                timeid = Data.FindID(timename, tablename + "ID", tid, 'Period', date)
                 # if debug: print "timeid", timeid
                 if timeid:
                     value = Data.Database[timename][timeid].get(fieldname)
                     # if debug: print "timename, timeid, fieldname, value: ", timename, timeid, fieldname, value
+                    # if debug: print "record: ", Data.Database[timename][timeid]
                 else:
                     value = None
                     # if debug: print "didn't find timeid", timeid, value
@@ -259,11 +278,49 @@ class GanttChartTable(wx.grid.PyGridTableBase):
         # rc = self.reportcolumn[self.columns[col]]
         ct = self.columntype[self.ctypes[col]]
 
-        t = ct.get('T', 'X')
-        rtid = self.report.get('ReportTypeID')
-        ctable = Data.ReportType[rtid].get('Table' + t)
+        # t = ct.get('T', 'X')
+        # rtid = self.report.get('ReportTypeID')
+        # ctable = Data.ReportType[rtid].get('Table' + t)
+        # if rtable != ctable: return  # shouldn't happen
 
         type = ct.get('DataType', 't')
+
+        of = self.coloffset[col]
+        if of != -1:
+            ctperiod, ctfield = ct.get('Name').split("/")
+            if ctfield == "Gantt":  # shouldn't happen
+                return
+            else:  # table name, field name, time period, and record id
+                if debug: print 'ctfield', ctfield
+                if ctfield == 'Measurement':  # find field name
+                    mid = Data.Database[rtable][tid].get('MeasurementID')  # point at measurement record
+                    if mid: # measurement id
+                        fieldname = Data.Database['Measurement'][mid].get('Name')  # measurement name == field name
+                        type = Data.Database['Measurement'][mid].get('DataType')  # override column type w/ measurement type
+                    else:
+                        fieldname = None
+                    tid = Data.Database[rtable][tid].get('ProjectID')  # point at measurement record
+                    rtable = 'Project'  # only supports project measurements
+                else:
+                    fieldname = ctfield
+            if debug: print 'offset, rtable, fieldname', of, rtable, fieldname
+            if fieldname == None: return
+
+            # find the period date
+            firstdate = self.reportcolumn[self.columns[col]].get('FirstDate')
+            if not Data.DateConv.has_key(firstdate): firstdate = Data.GetToday()  # use standard default
+            index = Data.DateConv[ firstdate ]
+            if ctperiod == "Day":
+                date = Data.DateIndex[ index + of ]
+            elif ctperiod == "Week":
+                index -= Data.DateInfo[ index ][2]  # convert to beginning of week
+                date = Data.DateIndex[ index + (of * 7) ]
+            else:
+                return  # don't update anything if time period not recognized
+            timename = rtable + ctperiod
+
+            timeid = Data.FindID(timename, rtable + "ID", tid, 'Period', date)
+
         # add processing of other date formats (per user preferences)
         # also add processing of dd, mm-dd, and yy-mm-dd for standard format
         if value == "": v = None
@@ -278,37 +335,52 @@ class GanttChartTable(wx.grid.PyGridTableBase):
             except ValueError:  # should I display an error message?
                 return
         elif type == 'd':
-            if Data.DateConv.has_key(value):
+            if len(value) in (2, 5, 8):
+                td = Data.GetToday()
+                value = td[0:-len(value)] + value
+            if value < '1901-01-01':
+                return
+            elif Data.DateConv.has_key(value):
                 v = value
-            elif value > '1901-01-01':
+            elif len(value) == 10 and value[4] == '-' and value[7] == '-':
                 try:
                     datetime.date(int(value[0:4]),int(value[5:7]), int(value[8:10]))
                     v = value
                     Data.ChangedCalendar = True
                 except ValueError:
-		    return
+                    return
             else:
                 return
         else: v = value
 
+        change = {}
+
         at = ct.get('AccessType')
-        if rtable != ctable: return  # shouldn't happen
-        elif at == 'd':
+        if at == 'd':
             column = ct.get('Name')
             table = rtable
             id = tid
+            if not id: return  # don't make update if ID is invalid
+            change['ID'] = id
         elif at == 'i':
             table, column = ct.get('Name').split('/')  # indirect table & column
             id = self.data[rtable][tid].get(table+'ID')
-        elif at == 's':
-            # determine whether record already exists, if not then add it -- somewhere =======
-            id = None  # this section needs to be reworked  ================================
-        else: id = None
-        if not id: return  # don't make update if ID is invalid -- what else has to be changed???
-        change = {}
-        change['ID'] = id
+            if not id: return  # don't make update if ID is invalid
+            change['ID'] = id
+        elif at == 's':  # time scale ??
+            table = timename
+            column = fieldname
+            if timeid: # don't add record if already exists
+                change['ID'] = timeid
+            else:
+                change[rtable + 'ID'] = tid
+                change['Period'] = date
+        else:
+            return  # we don't recognize how to find the record to update, so ignore it
+
         change['Table'] = table
         change[column] = v
+        if debug: print '---- New Value', change
         Data.Update(change)
         Data.SetUndo(column)
 
@@ -428,13 +500,14 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                 attr.SetReadOnly(True)
                 attr.SetRenderer(renderer)
             else:
+                # if debug: print "updateColAttrs ctname", ctname
                 # add logic here to protect columns
                 cid = self.columns[col]
                 rc = Data.ReportColumn[cid]
                 ctid = rc['ColumnTypeID']
                 grid.SetColSize(col, rc.get('Width') or 40)
                 grid.SetDefaultRowSize(22)      # make this big enough so text is fully displayed while editted
-                attr.SetReadOnly(not Data.ColumnType[ctid].get('Edit', False))
+                attr.SetReadOnly(not Data.ColumnType[ctid].get('Edit'))
                 # attr.SetRenderer(None)
             grid.SetColAttr(col, attr)
             col += 1
@@ -505,13 +578,19 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
         # if debug: print 'rc', rc
 
         # draw bar chart or not
-        # ct = self.table.columntype[self.table.ctypes[col]]  # if the column is in a report it will always have a type
-        # ctperiod, ctfield = ct.get('Name').split("/")
-        # if ctfield != "Gantt": return
+
+        # there are two tests. the name test is new, the FirstDate test is used in verion 0.1
+        ct = self.table.columntype[self.table.ctypes[col]]  # if the column is in a report it will always have a type
+        ctname = ct.get('Name')
+        # if debug: print "draw ctname", ctname
+        if ctname and ctname[-6:] != "/Gantt": return
 
         fdate = rc.get('FirstDate')
         if not fdate or not Data.DateConv.has_key(fdate): return  # this routine shouldn't be called for not gantt columns, but it is anyway - just ignore them
                                 # the program seems to be refreshing three times when one is needed (040505)
+
+        # if debug: print "-- didn't return --"
+
         ix = Data.DateConv[fdate]
         of = self.table.coloffset[col]
         dh, cumh, dow = Data.DateInfo[ix  + of]
@@ -608,6 +687,8 @@ class GanttChartGrid(wx.grid.Grid):
         """
         wx.grid.Grid.__init__(self, parent, -1) # initialize base class first
         self._table = GanttChartTable(reportid)
+        self.table = self._table  # treat table as an attribute that should be accessable
+                                  # (eventually convert all "_table" references to "table")
         self.SetTable(self._table)
         self.DisableDragRowSize()
         self.UpdateColumnWidths()
@@ -620,7 +701,7 @@ class GanttChartGrid(wx.grid.Grid):
         wx.grid.EVT_GRID_SELECT_CELL(self, self.OnSelect)
 
     def OnSelect(self, event):
-        if debug: print "OnSelect"
+        # if debug: print "OnSelect"
         reportid = self._table.report['ID']
         f = Data.OpenReports[reportid]
         Menu.AdjustMenus(f)
@@ -1142,11 +1223,17 @@ class GanttReportFrame(UI.ReportFrame):
         for n in newlist:
             change['ColumnTypeID'] = menuid[n]
             ct = Data.ColumnType[menuid[n]]
-            if ct['Name'] == 'Day/Gantt':
+            if ct['Name'] == 'Day/Gantt':  # leaving this for compatibility with version 0.1
                 change['Periods'] = 21
                 change['FirstDate'] = Data.GetToday()
                 undo = Data.Update(change)
                 del change['Periods']; del change['FirstDate']
+            elif ct.get('AccessType') == 's':
+                change['Periods'] = 14
+                # change['FirstDate'] = Data.GetToday()
+                undo = Data.Update(change)
+                del change['Periods']
+                # del change['FirstDate']
             else:
                 change['Width'] = ct.get('Width')
                 undo = Data.Update(change)
@@ -1248,22 +1335,22 @@ class GanttReportFrame(UI.ReportFrame):
     def OnScroll(self, event):  # need test to make sure this is a gantt report??
         """ scroll the selected  """
         if debug: print "Start OnScroll"
-        # figure out which gantt chart to scroll
+        # figure out which gantt chart to scroll -- either the ones w/ selected columns or the first one 
         scrollcols = []
         sel = self.Report.GetSelectedCols()  # current selection
         if len(sel) > 0: 
             for s in sel:
                 cid = self.Report._table.columns[s]
                 ctid = Data.ReportColumn[cid]['ColumnTypeID']
-                if Data.ColumnType[ctid].get('Name') == 'Day/Gantt':
+                if Data.ColumnType[ctid].get('AccessType') == 's':
                     if scrollcols.count(cid) == 0: 
                         scrollcols.append(cid)
         if len(scrollcols) == 0:
-            clist = Data.GetColumnList(self.ReportID)  # complete list of row id's in display order
-            for s in clist:
-                ctid = Data.ReportColumn[s]['ColumnTypeID']
-                if Data.ColumnType[ctid].get('Name') == 'Day/Gantt':
-                    scrollcols.append(s)
+            clist = Data.GetColumnList(self.ReportID)  # complete list of column id's in display order
+            for cid in clist:
+                ctid = Data.ReportColumn[cid]['ColumnTypeID']
+                if Data.ColumnType[ctid].get('AccessType') == 's':
+                    scrollcols.append(cid)
                     break
         offset = 0
         id = event.GetId()  # move left or right?
@@ -1272,15 +1359,33 @@ class GanttReportFrame(UI.ReportFrame):
         elif id == ID.SCROLL_RIGHT: offset = -1
         elif id == ID.SCROLL_RIGHT_FAR: offset = -7
         change = { 'Table': 'ReportColumn', 'FirstDate': None, 'ID': None }
+        if debug: print 'scrollcols, change:', scrollcols, change
+        somethingChanged = False
         for s in scrollcols:
-            dateConvIndex = Data.ReportColumn[s]['FirstDate']
-            if not Data.DateConv.has_key(dateConvIndex):
+            rc = Data.ReportColumn[s]
+            dateConvIndex = rc.get('FirstDate')
+            if Data.DateConv.has_key(dateConvIndex):
+                 datex = Data.DateConv[dateConvIndex]
+            else:
+                 datex = Data.DateConv[Data.GetToday()]
+
+            ctid = rc['ColumnTypeID']
+            timep = Data.ColumnType[ctid].get('Name')
+            if debug: print 'column type name:', timep
+            if not timep:
                 continue
-            newdate = Data.DateIndex[Data.DateConv[dateConvIndex] + offset]
+            elif timep[0]  == 'D':
+                newdate = Data.DateIndex[datex + offset]
+            elif timep[0]  == 'W':
+                datex -= Data.DateInfo[ datex ][2]  # convert to beginning of week
+                newdate = Data.DateIndex[datex + offset * 7]
+            else:  # if we don't recognize the time period
+                continue
             change['ID'] = s
             change['FirstDate'] = newdate
             Data.Update(change)
-        Data.SetUndo('Scroll to Task')
+            somethingChanged = True
+        if somethingChanged: Data.SetUndo('Scroll Timescale Columns')
         if debug: print "End Scroll"
 
     def OnScrollToTask(self, event):  # need test to make sure this is a gantt report??
@@ -1295,21 +1400,35 @@ class GanttReportFrame(UI.ReportFrame):
             if debug: print "tablename", rs.get('TableName')
             return  # can only scroll to tasks
         tid = rs.get('TableID')
-        newdate = Data.Task[tid].get('StartDate') or Data.Task[tid].get('CalculatedStartDate')
+        newdate = Data.ValidDate(Data.Task[tid].get('StartDate')) or Data.Task[tid].get('CalculatedStartDate')
         if debug: print "new date", newdate
         if newdate == None or "": return  # not date to scroll to
         scrollcols = []
         clist = Data.GetColumnList(self.ReportID)  # complete list of row id's in display order
         for c in clist:
             ctid = Data.ReportColumn[c]['ColumnTypeID']
-            if Data.ColumnType[ctid].get('Name') == 'Day/Gantt':
+            if Data.ColumnType[ctid].get('AccessType') == 's':
                 scrollcols.append(c)
         change = { 'Table': 'ReportColumn', 'FirstDate': None, 'ID': None }
+        somethingChanged = False
         for s in scrollcols:
+            datex = Data.DateConv[newdate]
+            ctid = Data.ReportColumn[s]['ColumnTypeID']
+            timep = Data.ColumnType[ctid].get('Name')
+            if not timep:
+                continue
+            elif timep[0]  == 'D':
+                newdate = Data.DateIndex[datex]
+            elif timep[0]  == 'W':
+                datex -= Data.DateInfo[ datex ][2]  # convert to beginning of week
+                newdate = Data.DateIndex[datex]
+            else:  # if we don't recognize the time period
+                continue
             change['ID'] = s
             change['FirstDate'] = newdate
             Data.Update(change)
-        Data.SetUndo('Scroll to Task')
+            somethingChanged = True
+        if somethingChanged: Data.SetUndo('Scroll to Task')
         if debug: print "End ScrollToTask"
 
         # wx.EVT_TOOL(self, ID.COLUMN_OPTIONS, self.OnGanttOptions)
@@ -1421,11 +1540,11 @@ class GanttReportFrame(UI.ReportFrame):
 
         cid = self.Report._table.columns[evt.GetCol()]
         ctid = Data.ReportColumn[cid].get('ColumnTypeID')
-        which = Data.ColumnType[ctid].get('T', 'X')  # can be 'A', 'B', or 'X'
+        which = Data.ColumnType[ctid].get('T') or 'Z'  # can be 'A', 'B', or 'X'
 
         ctable = Data.ReportType[rtid].get('Table' + which)  # 'X' should always yield 'None'
 
-        if (not ctable) or rtable != ctable:
+        if which != 'X' and ((not ctable) or rtable != ctable):
             evt.Veto()
             return
         evt.Skip()
