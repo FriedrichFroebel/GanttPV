@@ -57,6 +57,7 @@
 # 041010 - change "column insert" to set # periods for all timescale columns; changes to allow edit of non-measurement 
 #		time scale columns
 # 041126 - draw bars for week timescale
+# 041203 - moved get column header logic to Data
 
 import wx, wx.grid
 import datetime
@@ -102,51 +103,7 @@ class GanttChartTable(wx.grid.PyGridTableBase):
         return len(self.rows)
 
     def GetColLabelValue(self, col):
-        of = self.coloffset[col]
-        if of == -1:
-            label = self.reportcolumn[self.columns[col]].get('Label')
-            if not label or label == "":
-                ct = self.columntype[self.ctypes[col]]  # get column type record that corresponds to this column
-                label = ct.get('Label') or ct.get('Name')
-        else:
-            ct = self.columntype[self.ctypes[col]]  # get column type record that corresponds to this column
-            ctperiod, ctfield = ct.get('Name').split("/")
-
-            firstdate = self.reportcolumn[self.columns[col]].get('FirstDate')
-            if not Data.DateConv.has_key(firstdate): firstdate = Data.GetToday()
-            index = Data.DateConv[ firstdate ]
-
-            if ctfield == 'Gantt':
-                if ctperiod == "Day":
-                    date = Data.DateIndex[ index + of ]
-                    if of == 0 or date[8:10] == '01': label = date[5:7]
-                    else: 
-                        dow = Data.DateInfo[ index + of ][2]
-                        label = 'MTWHFSS'[dow]
-                    label += '\n' +  date[8:10]
-                elif ctperiod == "Week":
-                    index -= Data.DateInfo[ index ][2]  # convert to beginning of week
-                    date = Data.DateIndex[ index + (of * 7) ]
-                    if of == 0 or date[8:10] <= '07': label = date[5:7]
-                    else: label = ''
-                    label += '\n' +  date[8:10]
-                else:
-                    label = "-"  # unknown time scale
-            else: 
-                if ctperiod == "Day":
-                    date = Data.DateIndex[ index + of ]
-                elif ctperiod == "Week":
-                    index -= Data.DateInfo[ index ][2]  # convert to beginning of week
-                    date = Data.DateIndex[ index + (of * 7) ]
-                else:
-                    return "-"  # unknown time scale
-
-                if of == 0:
-                    label = ctfield[:5]  # ??try column width mod 8??
-                else:
-                    label = ''
-                label += '\n' + date[5:7] + "/" + date[8:10]
-        return label
+        return Data.GetColumnHeader(self.columns[col], self.coloffset[col])
 
     # default behavior is to number the rows  ---- option to include the task name ?????
     # def GetRowLabelValue(self, row):
@@ -154,92 +111,7 @@ class GanttChartTable(wx.grid.PyGridTableBase):
     #     return row + 1  #  self.reportrow[self.rows[row]]['TaskID']
 
     def GetValue(self, row, col):
-        of = self.coloffset[col]
-        ct = self.columntype[self.ctypes[col]]
-        if of == -1:
-            rr = self.reportrow[self.rows[row]]
-            rtable = rr.get('TableName')
-            tid = rr['TableID']  # was 'TaskID' -> changed to generic ID
-
-            # rc = self.reportcolumn[self.columns[col]]
-
-            t = ct.get('T', 'X')
-            rtid = self.report.get('ReportTypeID')
-            ctable = Data.ReportType[rtid].get('Table' + t)
-
-            at = ct.get('AccessType')
-            if rtable != ctable:
-                value = ''
-            elif at == 'd':
-                column = ct.get('Name')
-                # print column  # it prints each column twice - why???
-                value = self.data[rtable][tid].get(column, "")
-            elif at == 'i':
-                try:
-                    it, ic = ct.get('Name').split('/')  # indirect table & column
-                except ValueError:
-                    if debug: print "Indirect column w/o 'Table/Column', Name is: ", ct.get('Name')
-                    value = ""
-                else:
-                    iid = self.data[rtable][tid].get(it+'ID')
-                    # if debug: print "rtable, tid, it, ic, iid", rtable, tid, it, ic, iid
-                    if iid:
-                        value = self.data[it][iid].get(ic, "")
-                    else:
-                        value = ""
-        else:
-            # ---- Here are some examples that this should handle ----
-            # -- Report Type => Column Type --
-            # TaskDay => Day/Gantt, Day/Hours
-            # ResourceDay => Day/Hours
-            # ProjectDay or ProjectWeek => Day/Measurement, Week/Measurement
-            # TaskWeek => Week/PercentComplete, Week/Effort
-            # ResourceWeek => Week/Effort
-
-            ctperiod, ctfield = ct.get('Name').split("/")
-
-            if ctfield == "Gantt":  # don't display a value
-                value = 'gantt'
-            else:  # table name, field name, time period, and record id
-                rr = self.reportrow[self.rows[row]]
-                tablename = rr.get('TableName')
-                tid = rr['TableID']
-                if ctfield == 'Measurement':  # find field name
-                    mid = Data.Database[tablename][tid].get('MeasurementID')  # point at measurement record
-                    if mid: 
-                        fieldname = Data.Database['Measurement'][mid].get('Name')  # measurement name == field name
-                    else:
-                        fieldname = None
-                    tid = Data.Database[tablename][tid].get('ProjectID')  # point at measurement record
-                    tablename = 'Project'  # only supports project measurements
-                else:
-                    fieldname = ctfield
-
-                # find the period date
-                firstdate = self.reportcolumn[self.columns[col]].get('FirstDate')
-                if not Data.DateConv.has_key(firstdate): firstdate = Data.GetToday()
-                index = Data.DateConv[ firstdate ]
-                if ctperiod == "Day":
-                    date = Data.DateIndex[ index + of ]
-                elif ctperiod == "Week":
-                    index -= Data.DateInfo[ index ][2]  # convert to beginning of week
-                    date = Data.DateIndex[ index + (of * 7) ]
-                else:
-                    date = None
-                timename = tablename + ctperiod
-
-                timeid = Data.FindID(timename, tablename + "ID", tid, 'Period', date)
-                # if debug: print "timeid", timeid
-                if timeid:
-                    value = Data.Database[timename][timeid].get(fieldname)
-                    # if debug: print "timename, timeid, fieldname, value: ", timename, timeid, fieldname, value
-                    # if debug: print "record: ", Data.Database[timename][timeid]
-                else:
-                    value = None
-                    # if debug: print "didn't find timeid", timeid, value
-
-        if value == None: value = ''
-        return value
+        return Data.GetCellValue(self.rows[row], self.columns[col], self.coloffset[col])
 
     def GetRawValue(self, row, col):  # same as GetValue  ( I don't know the difference. The example I'm following made them the same. )
         value = GetValue(self, row, col)

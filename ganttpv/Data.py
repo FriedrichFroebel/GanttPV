@@ -62,6 +62,7 @@
 # 041009 - tightened edits on FirstDate and LastDate; added ValidDate() routine
 # 041012 - moved AddTable, AddRow, and AddReportType here from "Add Earned Value Tracking.py"
 # 041031 - don't automatically add report rows for "deleted" records
+# 041203 - GetColumnHeader and GetCellValue logic moved here from GanttReport
 
 # import calendar
 import datetime
@@ -1043,6 +1044,153 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                 precnt[k] = -1
                                         
 # end of GanttCalculation
+# -----------------
+def GetColumnHeader(colid, of):
+        """
+    colid == ReportColumn ID; of == the offset; returns the first and second header line
+        """
+        if of == -1:
+            label = ReportColumn[colid].get('Label')
+            if not label or label == "":
+                ctid = ReportColumn[colid].get('ColumnTypeID')  # get column type record that corresponds to this column
+                if not ctid or not ColumnType.has_key(ctid): return ""  # shouldn't happen
+                ct = ColumnType[ctid]
+                label = ct.get('Label') or ct.get('Name')
+        else:
+            ctid = ReportColumn[colid].get('ColumnTypeID')  # get column type record that corresponds to this column
+            if not ctid or not ColumnType.has_key(ctid): return ""  # shouldn't happen
+            ct = ColumnType[ctid]
+            ctperiod, ctfield = ct.get('Name').split("/")
+
+            firstdate = ReportColumn[colid].get('FirstDate')
+
+            if not DateConv.has_key(firstdate): firstdate = GetToday()
+            index = DateConv[ firstdate ]
+
+            if ctfield == 'Gantt':
+                if ctperiod == "Day":
+                    date = DateIndex[ index + of ]
+                    if of == 0 or date[8:10] == '01': label = date[5:7]
+                    else: 
+                        dow = DateInfo[ index + of ][2]
+                        label = 'MTWHFSS'[dow]
+                    label += '\n' +  date[8:10]
+                elif ctperiod == "Week":
+                    index -= DateInfo[ index ][2]  # convert to beginning of week
+                    date = DateIndex[ index + (of * 7) ]
+                    if of == 0 or date[8:10] <= '07': label = date[5:7]
+                    else: label = ''
+                    label += '\n' +  date[8:10]
+                else:
+                    label = "-"  # unknown time scale
+            else: 
+                if ctperiod == "Day":
+                    date = DateIndex[ index + of ]
+                elif ctperiod == "Week":
+                    index -= DateInfo[ index ][2]  # convert to beginning of week
+                    date = DateIndex[ index + (of * 7) ]
+                else:
+                    return "-"  # unknown time scale
+
+                if of == 0:
+                    label = ctfield[:5]  # ??try column width mod 8??
+                else:
+                    label = ''
+                label += '\n' + date[5:7] + "/" + date[8:10]
+        return label
+
+def GetCellValue(rowid, colid, of):
+        # of = self.coloffset[col]
+        ctid = ReportColumn[colid].get('ColumnTypeID')  # get column type record that corresponds to this column
+        if not ctid or not ColumnType.has_key(ctid): return ""  # shouldn't happen
+        ct = ColumnType[ctid]
+        # ct = self.columntype[self.ctypes[col]]
+        if of == -1:
+            rr = ReportRow[rowid]
+            rtable = rr.get('TableName')
+            tid = rr['TableID']  # was 'TaskID' -> changed to generic ID
+
+            # rc = self.reportcolumn[self.columns[col]]
+
+            t = ct.get('T', 'X')
+            reportid = rr.get('ReportID')
+            if not reportid or not Report.has_key(reportid): return ""  # shouldn't happen
+            rtid = Report[reportid].get('ReportTypeID')
+            ctable = ReportType[rtid].get('Table' + t)
+
+            at = ct.get('AccessType')
+            if rtable != ctable:
+                value = ''
+            elif at == 'd':
+                column = ct.get('Name')
+                # print column  # it prints each column twice - why???
+                value = Database[rtable][tid].get(column, "")
+            elif at == 'i':
+                try:
+                    it, ic = ct.get('Name').split('/')  # indirect table & column
+                except ValueError:
+                    if debug: print "Indirect column w/o 'Table/Column', Name is: ", ct.get('Name')
+                    value = ""
+                else:
+                    iid = Database[rtable][tid].get(it+'ID')
+                    # if debug: print "rtable, tid, it, ic, iid", rtable, tid, it, ic, iid
+                    if iid:
+                        value = Database[it][iid].get(ic, "")
+                    else:
+                        value = ""
+        else:
+            # ---- Here are some examples that this should handle ----
+            # -- Report Type => Column Type --
+            # TaskDay => Day/Gantt, Day/Hours
+            # ResourceDay => Day/Hours
+            # ProjectDay or ProjectWeek => Day/Measurement, Week/Measurement
+            # TaskWeek => Week/PercentComplete, Week/Effort
+            # ResourceWeek => Week/Effort
+
+            ctperiod, ctfield = ct.get('Name').split("/")
+
+            if ctfield == "Gantt":  # don't display a value
+                value = ''
+            else:  # table name, field name, time period, and record id
+                rr = ReportRow[rowid]
+                tablename = rr.get('TableName')
+                tid = rr['TableID']
+                if ctfield == 'Measurement':  # find field name
+                    mid = Database[tablename][tid].get('MeasurementID')  # point at measurement record
+                    if mid: 
+                        fieldname = Database['Measurement'][mid].get('Name')  # measurement name == field name
+                    else:
+                        fieldname = None
+                    tid = Database[tablename][tid].get('ProjectID')  # point at measurement record
+                    tablename = 'Project'  # only supports project measurements
+                else:
+                    fieldname = ctfield
+
+                # find the period date
+                firstdate = ReportColumn[colid].get('FirstDate')
+                if not DateConv.has_key(firstdate): firstdate = GetToday()
+                index = DateConv[ firstdate ]
+                if ctperiod == "Day":
+                    date = DateIndex[ index + of ]
+                elif ctperiod == "Week":
+                    index -= DateInfo[ index ][2]  # convert to beginning of week
+                    date = DateIndex[ index + (of * 7) ]
+                else:
+                    date = None
+                timename = tablename + ctperiod
+
+                timeid = FindID(timename, tablename + "ID", tid, 'Period', date)
+                # if debug: print "timeid", timeid
+                if timeid:
+                    value = Database[timename][timeid].get(fieldname)
+                    # if debug: print "timename, timeid, fieldname, value: ", timename, timeid, fieldname, value
+                    # if debug: print "record: ", Data.Database[timename][timeid]
+                else:
+                    value = None
+                    # if debug: print "didn't find timeid", timeid, value
+
+        if value == None: value = ''
+        return value
 
 # -----------------
 def UpdateDataPointers(self, reportid):  # self is either a list or a table behind a grid
