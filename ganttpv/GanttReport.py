@@ -47,8 +47,10 @@
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
 # 040906 - changed OnInsertColumn to ignore Labels w/ value of None; display "project name / report name" in 
 #               report title.
+# 040928 - Alexander - ignores dates not present in Data.DateConv; prevents entry of incorrectly formatted dates
 
 import wx, wx.grid
+import datetime
 from wxPython.lib.dialogs import wxMultipleChoiceDialog
 import Data, UI, ID, Menu
 # import images
@@ -98,7 +100,10 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                 ct = self.columntype[self.ctypes[col]]  # get column type record that corresponds to this column
                 label = ct.get('Label') or ct.get('Name')
         else:
-            index = Data.DateConv[self.reportcolumn[self.columns[col]]['FirstDate']]
+            dateConvIndex = self.reportcolumn[self.columns[col]]['FirstDate']
+            if not Data.DateConv.has_key(dateConvIndex):
+                return '--'
+            index = Data.DateConv[dateConvIndex]
             date = Data.DateIndex[ index + of ]
             dow = Data.DateInfo[ index + of ][2]
             if of == 0 or date[8:10] == '01': label = date[5:7]
@@ -193,7 +198,19 @@ class GanttChartTable(wx.grid.PyGridTableBase):
             try:
                 v = int(value)
             except ValueError:  # should I display an error message?
-                v = None
+                return
+        elif type == 'd':
+            if Data.DateConv.has_key(value):
+                v = value
+            elif value > '1901-01-01':
+                try:
+                    datetime.date(int(value[0:4]),int(value[5:7]), int(value[8:10]))
+                    v = value
+                    Data.ChangedCalendar = True
+                except ValueError:
+		    return
+            else:
+                return
         else: v = value
 
         at = ct.get('AccessType')
@@ -402,7 +419,7 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
         rc = self.table.reportcolumn[self.table.columns[col]]
         # if debug: print 'rc', rc
         fdate = rc.get('FirstDate')
-        if not fdate: return  # this routine shouldn't be called for not gantt columns, but it is anyway - just ignore them
+        if not fdate or not Data.DateConv.has_key(fdate): return  # this routine shouldn't be called for not gantt columns, but it is anyway - just ignore them
                                 # the program seems to be refreshing three times when one is needed (040505)
         ix = Data.DateConv[fdate]
         of = self.table.coloffset[col]
@@ -1164,7 +1181,10 @@ class GanttReportFrame(UI.ReportFrame):
         elif id == ID.SCROLL_RIGHT_FAR: offset = -7
         change = { 'Table': 'ReportColumn', 'FirstDate': None, 'ID': None }
         for s in scrollcols:
-            newdate = Data.DateIndex[Data.DateConv[Data.ReportColumn[s]['FirstDate']] + offset]
+            dateConvIndex = Data.ReportColumn[s]['FirstDate']
+            if not Data.DateConv.has_key(dateConvIndex):
+                continue
+            newdate = Data.DateIndex[Data.DateConv[dateConvIndex] + offset]
             change['ID'] = s
             change['FirstDate'] = newdate
             Data.Update(change)

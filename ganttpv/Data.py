@@ -57,6 +57,7 @@
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
 # 040815 - FileName not set to None on New (because not on globals list)
 # 040906 - add "project name / report name" to report titles
+# 040928 - Alexander - when making DateConv, ignores incorrectly formatted dates; afterward, ignores dates not present in DateConv
 
 # import calendar
 import datetime
@@ -733,34 +734,43 @@ def SetupDateConv():
     def makeFOW(d):
         return d - (d.weekday() * datetime.timedelta(1))   # backup to first day of week
 
+    Today = GetToday()
+
     DateConv = {}  # usage: index = DateConv['2004-01-01']
     DateIndex = []  # usage: date = DateIndex[1]
     DateInfo = [] # dayhours, cumhours, dow = DateInfo[1]
 
-    FirstDate = '9999-99-99'
-    LastDate = '0000-00-00'
+    FirstDate = Today
+    LastDate = Today
     oneday = datetime.timedelta(1)
     oneweek = oneday * 7
 
     # find the earliest and last dates that have been specified anywhere
     for p in Project.values():
-        d = p.get('StartDate', '9999-99-99')
-        if d and d != '' and d < FirstDate: FirstDate = d
-        d = p.get('TargetEndDate', '0000-00-00')
-        if d and d != '' and d > LastDate: LastDate = d
+        d = p.get('StartDate')
+        if d and d != '':
+            if d < FirstDate and StringToDate(d): FirstDate = d
+            elif d > LastDate and StringToDate(d): LastDate = d
+        d = p.get('TargetEndDate')
+        if d and d != '':
+            if d < FirstDate and StringToDate(d): FirstDate = d
+            elif d > LastDate and StringToDate(d): LastDate = d
 
     for p in Task.values():
-        d = p.get('StartDate', '9999-99-99')
-        if d and d != '' and d < FirstDate: FirstDate = d
-        d = p.get('EndDate', '0000-00-00')
-        if d and d != '' and d > LastDate: LastDate = d
+        d = p.get('StartDate')
+        if d and d != '':
+            if d < FirstDate and StringToDate(d): FirstDate = d
+            elif d > LastDate and StringToDate(d): LastDate = d
+        d = p.get('EndDate')
+        if d and d != '':
+            if d < FirstDate and StringToDate(d): FirstDate = d
+            elif d > LastDate and StringToDate(d): LastDate = d
 
-    if FirstDate == "9999-99-99": d1 = datetime.date.today()
-    else: d1 = StringToDate(FirstDate)
+    d1 = StringToDate(FirstDate)
     d1 = makeFOW(d1) - (oneweek * 50)  # allow 50 weeks of room before the first date in the file
 
-    if LastDate == "0000-00-00": d2 = d1 + (oneweek * 105)
-    else: d2 = makeFOW(StringToDate(LastDate)) + (oneweek * 105)
+    d2 = StringToDate(LastDate)
+    d2 = makeFOW(d2) - oneday + (oneweek * 105)
 
     if debug: print "first & last", d1.strftime("%Y-%m-%d"), d2.strftime("%Y-%m-%d")
 
@@ -804,7 +814,8 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
         sd = v.get('StartDate')
         # if debug: print "project, startdate", k, sd
         if sd == "": sd = Today
-        elif sd == None: sd = Today  # default project start dates to today
+        elif sd == None: sd = Today
+        elif not DateConv.has_key(sd): sd = Today  # default project start dates to today
         ps[k] = sd
         #ProjectStart = Project[projectid].get('StartDate', Today.strftime("%Y-%m-%d"))
         # if debug: print "project, startdate (adjusted)", k, sd
@@ -839,6 +850,7 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
     # convert project start dates to hours format
     ProjectStartHour = {}
     for k, v in ps.iteritems():
+        if not DateConv.has_key(v): continue
         si = DateConv[v]  # get starting date index
         sh = DateInfo[si][1]  # get cum hours for start date
         ProjectStartHour[k] = sh
@@ -866,13 +878,13 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                 if ted == "": ted = None
                 td  = Task[k].get('DurationHours')
                 if td == "": td = None
-                if tsd:
+                if tsd and DateConv.has_key(tsd):
                     tsi = DateConv[tsd]  # date index
                     tsh = DateInfo[tsi][1]  # date hour
                     if tsh > es: es = tsh  # use the date if dependencies allow
 
                 # calculate early finish
-                if tsd and ted and not td:  # use difference in dates to compute duration
+                if tsd and ted and not td and DateConv.has_key(ted):  # use difference in dates to compute duration
                     tei = DateConv[ted]  # date index
                     teh = DateInfo[tei+1][1]  # first hour of next day
                     ef = es + (tsh - teh)
