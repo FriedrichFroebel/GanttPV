@@ -65,6 +65,7 @@
 #		this was a problem when entering start dates and durations); problem still exists when adding
 #		a column or a row, but at least it will be less annoying.
 # 050106 - fixed bug where deleted records threw off location of inserted rows
+# 050202 - remove line feed from insert column menu text
 
 import wx, wx.grid
 import datetime
@@ -75,7 +76,7 @@ import re
 
 debug = 1
 mac = 1
-is24 = 0
+is24 = 1
 
 if debug: print "load GanttReport.py"
 
@@ -1144,10 +1145,13 @@ class GanttReportFrame(UI.ReportFrame):
             loopcheck += 1
             if loopcheck > 100000:  break  # prevent endless loop if data is corrupted
         menutext = [ (Data.ColumnType[x].get('Label') or Data.ColumnType[x].get('Name')) for x in menuid ]
+        for i, v in enumerate(menutext):  # remove line feeds before menu display
+            if v.count('\n'):
+                menutext[i] = v.replace('\n', ' ')
         if debug: print menuid, menutext
         dlg = wxMultipleChoiceDialog(self,
                          "Select columns to add:",
-                            "New Columns", menutext)
+                            "New Columns", menutext, style = wx.DEFAULT_FRAME_STYLE)
         if (dlg.ShowModal() != wx.ID_OK): return
         newlist = dlg.GetValue()
         addlist = []

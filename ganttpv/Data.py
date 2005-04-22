@@ -67,6 +67,9 @@
 #		added routine to add months to a date index
 # 050101 - added hours units
 # 050104 - added backwards pass and float calculations
+# 050328 - derive parent dates from children
+# 050329 - support multi-value list type columns (for predecessors, successors, children, and resource names)
+# 050402 - handle task w/ self for parent
 
 # import calendar
 import datetime
@@ -696,7 +699,7 @@ def CheckChange(change):  # change contains the undo info for the changes (only 
 
     elif ChangedSchedule: pass  # 
     elif change['Table'] == 'Task':
-        for k in ('StartDate', 'DurationHours', 'zzStatus', 'ProjectID'):
+        for k in ('StartDate', 'DurationHours', 'zzStatus', 'ProjectID', 'ParentTaskID'):
             if change.has_key(k): ChangedSchedule = True; break
     elif change['Table'] == 'Dependency':  # allows dependencies that refer to different projects
         for k in ('PrerequisiteID', 'TaskID', 'zzStatus'):
@@ -981,24 +984,56 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
     precnt = {}  # count of all unprocessed prerequisites
     succnt = {}  # count of all unprocessed successors
     tpid = {}  # task's projectid
+    parent = {}  # children indexed by parent id
     for k, v in Task.iteritems():  # init dependency counts, xrefs, and start dates
         if v.get('zzStatus', 'active') == 'deleted': continue
         pid = v['ProjectID']
         if not pid: continue  # silently ignore tasks w/o projects
+
         precnt[k] = 0
         succnt[k] = 0
         pre[k] = []
         suc[k] = []
         tpid[k] = pid
-        if debug: "task's project", k, pid
+        # if debug: "task's project", k, pid
         tsd = v.get('StartDate')
         if tsd == "": tsd = None
         if tsd and tsd < ps[pid]: ps[pid] = tsd  # adjust project start date if task starts are earlier
+
+        # if debug: print "task data", k, v
+        p = v.get('ParentTaskID')
+        if p and p != k:  # ignore parent pointer if it points to self
+            if parent.has_key(p):
+                parent[p] += 1
+            else:
+                parent[p] = 1
+
+    if debug: print "parent counts", parent
+    for k in parent.keys():  # clear parent dates, will calculate dates from children
+        del precnt[k] # remove parents from pass calculations
+        del succnt[k]
+        # del pre[k]
+        # del suc[k]
+
+        if debug: print "clearing parent", k, Task[k]
+        # update database -- doesn't use Update, but may in the future
+        Task[k]['hES'] = None
+        Task[k]['hEF'] = None
+        Task[k]['CalculatedStartDate'], Task[k]['CalculatedStartHour'] = None, None
+        Task[k]['CalculatedEndDate'], Task[k]['CalculatedEndHour'] = None, None
+
+        Task[k]['hLS'] = None
+        Task[k]['hLF'] = None
+        Task[k]['FreeFloatHours'] = None
+        Task[k]['TotalFloatHours'] = None
+        if debug: print "cleared parent", k, Task[k]
+
     for k, v in Dependency.iteritems():
         # if debug: print "dependency record", v
         if v.get('zzStatus', 'active') == 'deleted': continue
         p = v['PrerequisiteID']
         t = v['TaskID']
+        if parent.has_key(p) or parent.has_key(t): continue  # skip parent dependencies
         if suc.has_key(p) and pre.has_key(t):  # silently ignore dependencies for tasks not in list
             precnt[t] += 1
             succnt[p] += 1
@@ -1057,14 +1092,14 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                 # update database -- doesn't use Update, but may in the future
                 Task[k]['hES'] = es
                 Task[k]['hEF'] = ef
-                Task[k]['CalculatedStartDate'], Task[k]['CalculatedStartDateHour'] = HoursToDate(es)
-                Task[k]['CalculatedEndDate'], Task[k]['CalculatedEndDateHour'] = HoursToDate(ef)
+                Task[k]['CalculatedStartDate'], Task[k]['CalculatedStartHour'] = HoursToDate(es)
+                Task[k]['CalculatedEndDate'], Task[k]['CalculatedEndHour'] = HoursToDate(ef)
 
                 # change['ID'] = k
                 # change['hES'] = es
                 # change['hEF'] = ef
-                # change['CalculatedStartDate'], change['CalculatedStartDateHour'] = HoursToDate(es)
-                # change['CalculatedEndDate'], change['CalculatedEndDateHour'] = HoursToDate(ef)
+                # change['CalculatedStartDate'], change['CalculatedStartHour'] = HoursToDate(es)
+                # change['CalculatedEndDate'], change['CalculatedEndHour'] = HoursToDate(ef)
                 # Update(change, 0)
 
                 # tell successor that I'm ready
@@ -1112,7 +1147,34 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                 # tell predecessor that I'm ready
                 for t in pre[k]: succnt[t] -= 1
                 succnt[k] = -1
-                                        
+
+    # look more closely into impact of deleted records
+    for k, v in Task.iteritems():  # derive parent dates from children
+        if v.get('zzStatus', 'active') == 'deleted': continue
+        if parent.has_key(k): continue  # skip non-parent tasks
+        p = v.get('ParentTaskID')
+        if not p or k == p: continue  # ignore all tasks that don't have parents (or have self for parent)
+        # if debug: print "adjust parents of ", k, v
+        # update database -- doesn't use Update, but may in the future
+        hes, hef, hls, hlf = [ v.get(x) for x in ['hES', 'hEF', 'hLS', 'hLF']]
+        loopcnt = 0
+        while p and Task.has_key(p) and loopcnt < 10:
+            # if debug: print "adjusting parent ", p, Task[p]
+            loopcnt += 1
+            phes, phef, phls, phlf = [ Task[p].get(x) for x in ['hES', 'hEF', 'hLS', 'hLF']]
+            if not phes or hes < phes:
+                Task[p]['hES'] = hes
+                Task[p]['CalculatedStartDate'], Task[p]['CalculatedStartHour'] = HoursToDate(hes)
+            if not phef or hef > phef:
+                Task[p]['hEF'] = hef
+                Task[p]['CalculatedEndDate'], Task[p]['CalculatedEndHour'] = HoursToDate(hef)
+            if not phls or hls < phls: Task[p]['hLS'] = hls
+            if not phlf or hlf > phlf: Task[p]['hLF'] = hlf
+
+            # if debug: print "adjusted parent ", p, Task[p]
+
+            p = Task[p].get('ParentTaskID')
+                                       
 # end of GanttCalculation
 # -----------------
 def GetColumnHeader(colid, of):
@@ -1227,7 +1289,28 @@ def GetCellValue(rowid, colid, of):
                         value = Database[it][iid].get(ic, "")
                     else:
                         value = ""
-            if dt == 'u' and isinstance(value, int) and value > 0:
+            elif at == 'list':  # create a comma separated list of data
+            # use this Column's value --> go to this Table --> select rows where this Column = value --> return this Column's values
+            #    Table2 -> Column2
+            # 'Prerequisites': ID/Dependency/TaskID/PrerequisiteID
+            # 'Successors': ID/Dependency/PrerequisiteID/TaskID
+            # 'ChildTasks': ID/Task/ParentTaskID/ID
+                try:
+                    listcol, listtable, listselect, listtarget, listtable2, listcol2 = ct.get('Path').split('/')  # path to values
+                except ValueError:
+                    if debug: print "List column needs valid path, has: ", ct.get('Path')
+                    value = ""
+                else:
+                    listvalue = Database[rtable][tid].get(listcol)
+                    rows = FindIDs(listtable, listselect, listvalue, None, None)
+                    if rows:
+                        vals = [ Database[listtable][x].get(listtarget) for x in rows if not Database[listtable][x].get('zzStatus') == 'deleted']
+                        if listtable2 and listcol2:
+                            vals = [ Database[listtable2][x].get(listcol2) or "-" for x in vals if not Database[listtable2][x].get('zzStatus') == 'deleted']
+                        value = ", ".join( [ str(x) for x in vals ] )  # need to check this with unicode
+                    else:
+                        value = ""
+            if dt == 'u' and isinstance(value, int) and value > 0:    # units
                 a, h = divmod(value, 8)
                 w, d = divmod(a, 5)
                 if w == 1: w = 0; d += 5 

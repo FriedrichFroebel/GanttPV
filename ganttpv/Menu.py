@@ -33,9 +33,13 @@
 # 040605 - changed URL directory names to lower case
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
 # 041013 - in Save As set title of main window to file name; in New set title of main window to "Main".
+# 050311 - add OGL import
+# 050314 - add xmlrpclib import
 
 import wx, os, webbrowser
 import Data, ID, UI
+import xmlrpclib  # to call xml server
+import wx.lib.ogl as ogl  # for network diagrams
 # import Main, GanttReport
 # import inspect
 

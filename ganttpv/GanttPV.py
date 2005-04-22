@@ -44,6 +44,7 @@
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
 # 040716 - minor fix to tab changes
 # 040914 - ReportTypes can be flagged as all/each/both for all projects or individual project use
+# 050202 - remove line feed from insert report menu text
 
 import wx
 import wx.grid
@@ -348,58 +349,40 @@ class ProjectReportFrame(UI.MainFrame):
             if debug: print "couldn't find program id"
             return  # shouldn't happen
         change = { 'Table': 'Report', 'ProjectID': pid  }
-        if pid == 1:  # reports for all projects
-            r2 = Data.Report[2]  # report 2 defines the sequence of the report type selection list
-            menuid = []  # list of types to be displayed for selection
-            k = r2.get('FirstRow', 0)
-            loopcheck = 0
-            while k != 0 and k != None:
-                rr = Data.ReportRow[k]
-                hidden = rr.get('Hidden', False)
-                table = rr.get('TableName')  # should always be 'ReportType' or 'ColumnType'
-                id = rr.get('TableID')
-                if (not hidden) and table == 'ReportType' and id:
-                    active = Data.ReportType[id].get('zzStatus', 'active') == 'active'
+        r2 = Data.Report[2]  # report 2 defines the sequence of the report type selection list
+        menuid = []  # list of types to be displayed for selection
+        k = r2.get('FirstRow', 0)
+        loopcheck = 0
+        while k != 0 and k != None:
+            rr = Data.ReportRow[k]
+            hidden = rr.get('Hidden', False)
+            table = rr.get('TableName')  # should always be 'ReportType' or 'ColumnType'
+            id = rr.get('TableID')
+            if (not hidden) and table == 'ReportType' and id:
+                active = Data.ReportType[id].get('zzStatus', 'active') == 'active'
+                if pid == 1:
                     allproj = (Data.ReportType[id].get('AllOrEach') or 'all') in ['all', 'both']
                     if active and allproj :
                         menuid.append( id )
-                k = rr.get('NextRow', 0)
-                loopcheck += 1
-                if loopcheck > 100000:  
-                    if debug: print "New Report: report rows loop"
-                    break  # prevent endless loop if data is corrupted
-            menutext = [ (Data.ReportType[x].get('Label') or Data.ReportType[x].get('Name')) for x in menuid ]
-            if debug: print menuid, menutext
-            dlg = wx.SingleChoiceDialog(self, "Select report to add:", "New Report", menutext)
-            if (dlg.ShowModal() != wx.ID_OK): return
-            selection = dlg.GetSelection()
-            rtid = menuid[selection]
-        else:
-            r2 = Data.Report[2]  # report 2 defines the sequence of the report type selection list
-            menuid = []  # list of types to be displayed for selection
-            k = r2.get('FirstRow', 0)
-            loopcheck = 0
-            while k != 0 and k != None:
-                rr = Data.ReportRow[k]
-                hidden = rr.get('Hidden', False)
-                table = rr.get('TableName')  # should always be 'ReportType' or 'ColumnType'
-                id = rr.get('TableID')
-                if (not hidden) and table == 'ReportType' and id:
-                    active = Data.ReportType[id].get('zzStatus', 'active') == 'active'
+                else:
                     eachproj = (Data.ReportType[id].get('AllOrEach') or 'all') in ['each', 'both']
                     if active and (eachproj or Data.ReportType[id].get('TableA') == "Task"):
                         menuid.append( id )
-                k = rr.get('NextRow', 0)
-                loopcheck += 1
-                if loopcheck > 100000:  
-                    if debug: print "New Report: report rows loop"
-                    break  # prevent endless loop if data is corrupted
-            menutext = [ (Data.ReportType[x].get('Label') or Data.ReportType[x].get('Name')) for x in menuid ]
-            if debug: print menuid, menutext
-            dlg = wx.SingleChoiceDialog(self, "Select report to add:", "New Report", menutext)
-            if (dlg.ShowModal() != wx.ID_OK): return
-            selection = dlg.GetSelection()
-            rtid = menuid[selection]
+            k = rr.get('NextRow', 0)
+            loopcheck += 1
+            if loopcheck > 100000:  
+                if debug: print "New Report: report rows loop"
+                break  # prevent endless loop if data is corrupted
+        menutext = [ (Data.ReportType[x].get('Label') or Data.ReportType[x].get('Name')) for x in menuid ]
+        for i, v in enumerate(menutext):  # remove line feeds before menu display
+            if v.count('\n'):
+                menutext[i] = v.replace('\n', ' ')
+        if debug: print menuid, menutext
+        dlg = wx.SingleChoiceDialog(self, "Select report to add:", "New Report", menutext)
+        if (dlg.ShowModal() != wx.ID_OK): return
+        selection = dlg.GetSelection()
+        rtid = menuid[selection]
+        if pid != 1:
             change['SelectColumn'] = 'ProjectID'
             change['SelectValue'] = pid
         change['ReportTypeID'] = rtid
@@ -499,6 +482,7 @@ class ProjectReportFrame(UI.MainFrame):
             rep['FirstColumn'] = c
 
             # copy report rows  -- do I need to do this? won't it automatically create these for me?
+            #                      (it would copy the rows, but not in the same order -- 050415)
             r = rep.get('FirstRow')
             rr = Data.ReportRow
             rows = []
