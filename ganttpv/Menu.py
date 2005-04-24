@@ -35,6 +35,7 @@
 # 041013 - in Save As set title of main window to file name; in New set title of main window to "Main".
 # 050311 - add OGL import
 # 050314 - add xmlrpclib import
+# 050409 - Alexander - implemented multi-level Scripts menu: AddMenuTree, SearchDir, and LinearTraversal functions; ScriptMenu and ScriptPath arrays.
 
 import wx, os, webbrowser
 import Data, ID, UI
@@ -49,20 +50,18 @@ if debug: print "load Menu.py"
 # --------- File Menu ------------
 
 def doNew(self, event):
-    """ Respond to the "New" menu command.
-    """
+    """ Respond to the "New" menu command. """
     if debug: print "Start doNew"
     if Data.AskIfUserWantsToSave(self, "creating new project file"):
         if debug: print "Setup empty database"
-        Data.CloseReports()# close all open reports except #1
+        Data.CloseReports() # close all open reports except #1
         Data.SetEmptyData()
         Data.MakeReady()
         Data.OpenReports[1].SetTitle("Main")
     if debug: print "End doNew"
 
 def doOpen(self, event):
-    """ Respond to the "Open" menu command.
-    """
+    """ Respond to the "Open" menu command. """
     if not Data.AskIfUserWantsToSave(self, "open project file"): return
 
     curDir = os.getcwd()
@@ -77,8 +76,7 @@ def doOpen(self, event):
 
 # I'm going to leave the close logic in each frame for the present
 # def doClose(self, event):  # what should I close? the report? all reports? 
-#     """ Respond to the "Close" menu command.
-#    """
+#     """ Respond to the "Close" menu command. """
 #    if Data.ChangedData:
 #        if not Data.AskIfUserWantsToSave(self, "closing"): return
 #
@@ -86,14 +84,12 @@ def doOpen(self, event):
         # self.Destroy()
 
 def doSave(self, event):
-    """ Respond to the "Save" menu command.
-    """
+    """ Respond to the "Save" menu command. """
     if Data.FileName != None:
         Data.SaveContents(self)
 
 def doSaveAs(self, event):
-    """ Respond to the "Save As" menu command.
-    """
+    """ Respond to the "Save As" menu command. """
     # global Data.FileName
     if Data.FileName == None:
         default = ""
@@ -117,8 +113,7 @@ def doSaveAs(self, event):
     Data.SaveContents(self)
 
 def doExit(self, event):
-    """ Respond to the "Quit" menu command.
-    """
+    """ Respond to the "Quit" menu command. """
     if not Data.AskIfUserWantsToSave(self, "exit GanttPV"): return
 
     if debug: print "Continue doExit"
@@ -130,8 +125,7 @@ def doExit(self, event):
 
 # not used yet
 def doRevert(self, event):
-    """ Respond to the "Revert" menu command.
-    """
+    """ Respond to the "Revert" menu command. """
     if not Data.ChangedData: return
 
     if wxMessageBox("Discard changes made to this file?", "Confirm",
@@ -142,68 +136,117 @@ def doRevert(self, event):
 # ---------- Edit Menu -------
 
 def doUndo(self, event):
-    """ Respond to the "Undo" menu command.
-    """
+    """ Respond to the "Undo" menu command. """
     Data.DoUndo()
 
 def doRedo(self, event):
-    """ Respond to the "Undo" menu command.
-    """
+    """ Respond to the "Undo" menu command. """
     Data.DoRedo()
 
 # ------------ Script Menu -----------------
 
-# look for the scripts directory at Data.Option['ScriptDirectory']
-
-Script = []  # array of script file names
+ScriptMenu = []  # nested list of item and submenu names
+ScriptPath = []  # relative pathnames, arranged by script id
 FirstScriptID = 10000
 # menuOffset = 2  # required if I insert into the menu
 
 def doAddScripts(self):  # report should use this it initialize scripts menu
-    if len(Script) > 0:
+    global ScriptMenu
+    if len(ScriptMenu) > 0:
         mb = self.GetMenuBar()
         menuItem = mb.FindItemById(ID.FIND_SCRIPTS)
         menu = menuItem.GetMenu()
-        i = 0
-        while i < len(Script):
-            menu.Append(FirstScriptID + i, Script[i][:-3])  # omit ".py" from script names
-            i += 1
+        AddMenuTree(menu, ScriptMenu, FirstScriptID)
 
-        #menu.Insert(9, ID, "NewItem " + str(ID))
-        #item = wxMenuItem(menu)
-        #item.SetId(ID)
-        #item.SetText("NewItem " + str(ID))
-        #menu.InsertItem(9, item)
+def AddMenuTree(menu, list, nextID):
+    """ Add a nested list of items and submenus to menu.
+
+    Increment nextID after each menu append.
+    Return the final value of nextID.
+    List format is [(ignored), [item], [submenu, [item], ...] ...]
+    """
+    for i in list[1:]:
+        if len(i) > 1:
+            submenu = wx.Menu()
+            nextID = AddMenuTree(submenu, i, nextID)
+            menu.AppendMenu(nextID, i[0], submenu)
+        else:
+            menu.Append(nextID, i[0])
+        nextID += 1
+    return nextID
+
+def SearchDir(path, maxDepth=0, showSuffix=None, hidePrefix=None):
+    """ Return a list of the files contained in path.
+
+    Allow at most maxDepth sublevels.
+    Show only files whose names end with showSuffix.
+    Ignore files and directories whose names begin with hidePrefix.
+    List format is [path, [file], [subpath, [file], ...] ...]
+    """
+    found = [os.path.basename(path)]
+    contents = os.listdir(path)
+    for i in contents:
+        name = os.path.basename(i)
+        if name[:len('zzMeasure')] == 'zzMeasure' # ignore the zzMeasure folder
+        if hidePrefix and name[:len(hidePrefix)] == hidePrefix:
+            continue
+        fullpath = os.path.join(path, name)
+        if maxDepth and os.path.isdir(fullpath):
+            subfind = SearchDir(fullpath, maxDepth-1, showSuffix, hidePrefix)
+            if len(subfind) > 1:
+                found.append(subfind)
+        elif not showSuffix:
+            found.append([name])
+        elif name[-len(showSuffix):] == showSuffix:
+            nameRoot = name[:-len(showSuffix)]
+            found.append([nameRoot])
+    return found
+
+def LinearTraversal(list, verbose=False, path=None):
+    """ Return a depth-first traversal of a nested list.
+
+    If verbose, prepend an accumulated path to each list item.
+    Nested format is [(ignored), [item1], [item2, [item3], ...] ...]
+    Traversed format is [item1, item3, item2, ...]
+    """
+    traversal = []
+    for i in list[1:]:
+        if verbose and path:
+            name = os.path.join(path, i[0])
+        else:
+            name = i[0]
+        if len(i) > 1:
+            sublist = LinearTraversal(i, verbose, name)
+            traversal.extend(sublist)
+        traversal.append(name)
+    return traversal
 
 def GetScriptNames():
-    global Script
+    global ScriptMenu, ScriptPath
+    if debug: print 'start GetScriptNames'
     sd = Data.Option.get('ScriptDirectory') or os.path.join(Data.Path, "Scripts")
-    try:
-        if debug: print "looking for script names in " + sd
-        s = os.listdir(sd)
-        Script = [ x for x in s if x[-3:] == ".py" ]
-        if debug: print 'these are the script names I found: ',  Script
-    except OSError:
-        if debug: print "doFindScripts os.listdir OSError"
+    ScriptMenu = SearchDir(sd, 2, '.py')
+    ScriptPath = LinearTraversal(ScriptMenu, True)
+    if debug: print 'files found:', ScriptMenu
+    if debug: print 'end GetScriptNames'
 
 def doFindScripts(self, event):
-    global Script     # Data.ScriptDirector
+    global ScriptMenu, ScriptPath
     if debug: print "Start doFindScripts"
 
     for v in Data.OpenReports.values():    # update menus for all open reports
-        if len(Script) > 0:  # Remove old scripts from menu
+        if len(ScriptPath) > 0:  # Remove old scripts from menu
             mb = v.GetMenuBar()
             menuItem = mb.FindItemById(ID.FIND_SCRIPTS)
             menu = menuItem.GetMenu()
             i = 0
-            while i < len(Script):
+            while i < len(ScriptPath):
                 menu.Remove(FirstScriptID + i)
                 i += 1
 
     GetScriptNames()
 
-    if len(Script) == 0: 
-
+    if len(ScriptPath) <= 1: 
         curDir = os.getcwd()  # save current directory
         dlg = wx.DirDialog(self, "Choose Script directory",
                                 style = wx.DD_DEFAULT_STYLE|wx.DD_NEW_DIR_BUTTON)
@@ -213,7 +256,6 @@ def doFindScripts(self, event):
                 Data.Option['ScriptDirectory'] = sd
                 Data.SaveOption()
             GetScriptNames()  # even if directory is same, contents may have changed
-
         os.chdir(curDir)
 
     for v in Data.OpenReports.values():    # update menus for all open reports
@@ -222,13 +264,17 @@ def doFindScripts(self, event):
     if debug: print "End doFindScripts"
 
 def doScript(self, event):
+    global ScriptPath
     if debug: print "Start doScript"
     id = event.GetId()
     sd = Data.Option.get('ScriptDirectory') or os.path.join(Data.Path, "Scripts")
-    script = os.path.join(sd, Script[id - FirstScriptID])
-    if debug: print "script file name", script
+    script = os.path.join(sd, ScriptPath[id - FirstScriptID] + '.py')
+    if debug: print "script file name:", script
     try:
-        execfile(script)
+        name_dict = Data.GetModuleNames()
+        name_dict['self'] = self
+        name_dict['thisFile'] = script
+        execfile(script, name_dict)
     except IOError:
         pass
     if debug: print "End doScript"
@@ -247,8 +293,7 @@ def doForum(self, event):
     webbrowser.open_new('http://www.SimpleProjectManagement.com/forum/')
 
 def doShowAbout(self, event):
-    """ Respond to the "About GanttPV" menu command.
-    """
+    """ Respond to the "About GanttPV" menu command. """
 
     # dialog = wx.Dialog(self, -1, "About GanttPV") # ,
     #                   #style=wx.DIALOG_MODAL | wx.STAY_ON_TOP)

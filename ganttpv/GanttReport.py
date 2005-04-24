@@ -55,15 +55,15 @@
 # 041009 - Alexander & Brian - default dates to current year and month; Brian - change SetValue to work on measurement time scale data
 # 041009 - change scroll to work w/ any time scale column
 # 041010 - change "column insert" to set # periods for all timescale columns; changes to allow edit of non-measurement 
-#		time scale columns
+#                time scale columns
 # 041126 - draw bars for week timescale
 # 041203 - moved get column header logic to Data
 # 041204 - default time scale first date to today
 # 050101 - previously added month  & quarter timescale
 # 050101 - added entry of duration units datatype
 # 050105 - fix part of bug: avoid report reset unless #rows or #columns changes (report un-scrolls when reset 
-#		this was a problem when entering start dates and durations); problem still exists when adding
-#		a column or a row, but at least it will be less annoying.
+#                this was a problem when entering start dates and durations); problem still exists when adding
+#                a column or a row, but at least it will be less annoying.
 # 050106 - fixed bug where deleted records threw off location of inserted rows
 # 050202 - remove line feed from insert column menu text
 
@@ -83,12 +83,10 @@ if debug: print "load GanttReport.py"
 # ------------ Table behind grid ---------
 
 class GanttChartTable(wx.grid.PyGridTableBase):
-    """
-    A custom wxGrid Table using user supplied data
-    """
+    """ A custom wxGrid Table using user supplied data """
+
     def __init__(self, reportidx):
-        """ data is taken from SampleData
-        """
+        """ data is taken from SampleData """
         # The base class must be initialized *first*
         wx.grid.PyGridTableBase.__init__(self)
 
@@ -289,9 +287,9 @@ class GanttChartTable(wx.grid.PyGridTableBase):
         Data.SetUndo(column)
 
     def ResetView(self, grid):
-        """
-        (wxGrid) -> Reset the grid view.   Call this to
-        update the grid if rows and columns have been added or deleted
+        """ (wxGrid) -> Reset the grid view.
+
+        Call this to update the grid if rows and columns have been added or deleted.
         """
         grid.BeginBatch()
         for current, new, delmsg, addmsg in [
@@ -664,11 +662,10 @@ class GanttChartGrid(wx.grid.Grid):
 
 #------------------ MultiSelect Frame -----------------------------------
 
-class MultiSelection(UI. MultipleSelection):
+class MultiSelection(UI.MultipleSelection):
     def __init__(self, *args, **kwds):
         # begin wxGlade: ReportFrame.__init__
-        kwds["style"] = wx.DEFAULT_FRAME_STYLE
-        UI. MultipleSelection.__init__(self, *args, **kwds)
+        UI.MultipleSelection.__init__(self, *args, **kwds)
 
         # these three commands were moved out of UI.ReportFrame's init
         # self.report_window = GanttChartGrid(self, reportid)
@@ -1034,8 +1031,7 @@ class GanttReportFrame(UI.ReportFrame):
                 else:
                     status[i] = -k
 
-        dialog = MultiSelection(self, -1, "")
-        # dialog = MultiSelection(None, -1, "")
+        dialog = MultiSelection(self, -1, "", size=(240,320))
         dialog.Instructions.SetLabel("Select prerequisite tasks:")
         # dialog.SelectionListBox.Clear()
         dialog.SelectionListBox.Set(tname)
@@ -1094,8 +1090,7 @@ class GanttReportFrame(UI.ReportFrame):
                 else:
                     status[i] = -k
 
-        dialog = MultiSelection(self, -1, "")
-        # dialog = MultiSelection(None, -1, "")
+        dialog = MultiSelection(self, -1, "", size=(240,320))
         dialog.Instructions.SetLabel("Select assigned resources:")
         # dialog.SelectionListBox.Clear()
         dialog.SelectionListBox.Set(names)
@@ -1151,7 +1146,8 @@ class GanttReportFrame(UI.ReportFrame):
         if debug: print menuid, menutext
         dlg = wxMultipleChoiceDialog(self,
                          "Select columns to add:",
-                            "New Columns", menutext, style = wx.DEFAULT_FRAME_STYLE)
+                            "New Columns", menutext, style=wx.DEFAULT_FRAME_STYLE, size=(240, 320))
+        dlg.Centre()
         if (dlg.ShowModal() != wx.ID_OK): return
         newlist = dlg.GetValue()
         addlist = []

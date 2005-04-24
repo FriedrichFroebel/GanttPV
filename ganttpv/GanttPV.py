@@ -45,18 +45,21 @@
 # 040716 - minor fix to tab changes
 # 040914 - ReportTypes can be flagged as all/each/both for all projects or individual project use
 # 050202 - remove line feed from insert report menu text
+# 050409 - Alexander - added command-line support for opening .ganttpv files and .py scripts.
 
 import wx
 import wx.grid
 # from wxPython.lib.dialogs import wxMultipleChoiceDialog  # use single selection for adding new reports
 # import webbrowser
 import os, os.path, sys
-import Data, UI, ID, Menu, GanttReport
-
+import re
 # import images
+import Data, UI, ID, Menu, GanttReport
 
 debug = 1
 mac = 1
+platform = sys.platform
+
 if debug: print "load Main.py"
 
 #----------------------------------------------------------------------
@@ -379,6 +382,8 @@ class ProjectReportFrame(UI.MainFrame):
                 menutext[i] = v.replace('\n', ' ')
         if debug: print menuid, menutext
         dlg = wx.SingleChoiceDialog(self, "Select report to add:", "New Report", menutext)
+        dlg.SetSize((240,320))
+        dlg.Centre()
         if (dlg.ShowModal() != wx.ID_OK): return
         selection = dlg.GetSelection()
         rtid = menuid[selection]
@@ -662,8 +667,8 @@ class ProjectReportFrame(UI.MainFrame):
 class GanttPVApp(wx.App):
     def OnInit(self):
         wx.InitAllImageHandlers()
-        # first parameter is the report id. evidently my new parameters have to be added before the others
 
+        # first parameter is the report id. evidently my new parameters have to be added before the others
         # these are the positional parameters for wx.Frame:
         # None = parent
         # -1 = id
@@ -673,17 +678,69 @@ class GanttPVApp(wx.App):
 
         Main = ProjectReportFrame(1, None, -1, "")  # reportid = 1
         # Main = ProjectReportFrame(-1, "")
+	Main.Show(True)
         self.SetTopWindow(Main)
-        Main.Show(1)
+
+        self.ParseOptions()
+
         return 1
+
+    def ParseOptions(self):
+        """ Process any command line options """
+        options = sys.argv
+        usageStr = 'usage: ' + options[0] + ' [-script [n] name...] [file...]'
+        i = 1
+        while i < len(options):
+            if options[i][0] != '-':
+                Data.OpenFile(options[i])
+            elif re.match('-script', options[i], re.I):
+                if debug: print "process option '-script [n] name...'"
+                i += 1
+                if i >= len(options) or options[i][0] == '-':
+                    print options[0] + ': option requires an argument -- script'
+                    print usageStr
+                    break
+    
+                try:
+                    count = int(options[i])
+                    i += 1
+                except ValueError:
+                    count = 1
+    
+                while count > 0:
+                    if debug: print 'script name:', options[i]
+                    s, ext = os.path.splitext(options[i])
+                    if ext and ext != '.py':
+                        if debug: print "script has extension other than '.py'"
+                        if debug: print "option '-script' cancelled"
+                        break
+
+                    sd = Data.Option.get('ScriptDirectory') or os.path.join(Data.Path, "Scripts")
+                    script = os.path.join(sd, s + '.py')
+                    try:
+                        name_dict = Data.GetModuleNames()
+                        name_dict['self'] = self.GetTopWindow()
+                        name_dict['thisFile'] = script
+                        execfile(script, name_dict)
+                    except IOError:
+                        pass
+                    except Exception:
+                        error_info = sys.exc_info()
+                        sys.excepthook(*error_info)
+
+                    count -= 1
+                    i += 1
+            else:
+                print options[0] + ': illegal option -- ' + options[i][1:]
+            i += 1
 
 # end of class GanttPVApp
 
 if debug: print "Test to start main loop"
 
 if __name__ == "__main__":
-    if debug: print "Start main loop ------------------------- "
-    if debug: print "sys.argv", sys.argv
+    if debug: print "Start main loop ------------------------ "
+
     # ex_name = 'myprogram.exe' 
     # if mac:
     #    ex_name = 'GanttPV.app' 
@@ -694,24 +751,22 @@ if __name__ == "__main__":
     # if sys.path[0][-len(ex_name):] == ex_name: 
     #    path = os.path.split(sys.path[0]) 
     # else: 
-    if mac:
-        path = os.path.split(__file__) 
-        Data.Path = path[0]  # directory from which program was executed
-    else:
-        path = os.path.abspath(sys.argv[0])
-        dirname, basename = os.path.split(path)
-        Data.Path = os.path.dirname(dirname)  # back up one level
+
+    # if mac:
+    #     path = os.path.split(__file__) 
+    #     Data.Path = path[0]  # directory from which program was executed
+    # else:
         # path = (os.getcwd(), 'GanttPV.exe')
-    if debug: print "path", path
-    # Data.Path = path[0]  #~~ directory from which program was executed
+
+    path = os.path.abspath(sys.argv[0])
+    Data.Path = os.path.dirname(path)
+    if debug: print "data path:", Data.Path
     Data.LoadOption(Data.Path)
 
-    GanttPV = GanttPVApp(0)
-    # if len(sys.argv) == 3:
-    #     Data.OpenFile(sys.argv[2])
+    App = GanttPVApp(0)
+    App.MainLoop()
 
-    GanttPV.MainLoop()
-    if debug: print "End main loop ---------------------- "
+    if debug: print "End main loop -------------------------- "
 
 # if __name__ == '__main__':
 #    app = wx.PySimpleApp()

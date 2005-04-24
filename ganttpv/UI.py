@@ -19,6 +19,8 @@
 #    along with GanttPV; if not, write to the Free Software
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
+# 050409 - Alexander - revised MultipleSelection, added resize border.
+
 import wx, ID, Menu
 
 class MainFrame(wx.Frame):
@@ -860,7 +862,7 @@ class EditProjectPFrame(wx.Frame):
 class MultipleSelection(wx.Dialog):
     def __init__(self, *args, **kwds):
         # begin wxGlade: MultipleSelection.__init__
-        kwds["style"] = wx.DEFAULT_DIALOG_STYLE
+        kwds["style"] = wx.DEFAULT_FRAME_STYLE
         wx.Dialog.__init__(self, *args, **kwds)
         self.Instructions = wx.StaticText(self, -1, "Make selection\n")
         self.SelectionListBox = wx.ListBox(self, -1, choices=["choice 1", "choice 2"], style=wx.LB_MULTIPLE)
@@ -874,7 +876,7 @@ class MultipleSelection(wx.Dialog):
     def __set_properties(self):
         # begin wxGlade: MultipleSelection.__set_properties
         self.SetTitle("Selection")
-        self.SelectionListBox.SetSize((295, 200))
+        # self.SelectionListBox.SetSize((300, 200))
         self.SelectionListBox.SetSelection(0)
         self.OK.SetDefault()
         # end wxGlade
@@ -888,21 +890,21 @@ class MultipleSelection(wx.Dialog):
         sizer_9.Add((10, 10), 0, 0, 0)
         sizer_9.Add(self.Instructions, 0, wx.EXPAND, 0)
         sizer_9.Add((10, 10), 0, 0, 0)
-        sizer_9.Add(self.SelectionListBox, 0, wx.EXPAND, 0)
+        sizer_9.Add(self.SelectionListBox, 1, wx.GROW, 0)
         sizer_9.Add((10, 10), 0, 0, 0)
         sizer_26.Add((10, 10), 0, 0, 0)
         sizer_26.Add(self.OK, 0, 0, 0)
         sizer_26.Add((10, 10), 0, 0, 0)
         sizer_26.Add(self.Cancel, 0, 0, 0)
         sizer_26.Add((10, 10), 0, 0, 0)
-        sizer_9.Add(sizer_26, 1, wx.ALIGN_CENTER_HORIZONTAL, 0)
+        sizer_9.Add(sizer_26, 0, wx.ALIGN_CENTER_HORIZONTAL, 0)
         sizer_9.Add((10, 10), 0, 0, 0)
-        sizer_4.Add(sizer_9, 1, wx.EXPAND, 0)
+        sizer_4.Add(sizer_9, 1, wx.GROW, 0)
         sizer_4.Add((10, 10), 0, 0, 0)
         self.SetAutoLayout(1)
         self.SetSizer(sizer_4)
-        sizer_4.Fit(self)
-        sizer_4.SetSizeHints(self)
+        # sizer_4.Fit(self)
+        # sizer_4.SetSizeHints(self)
         self.Layout()
         # end wxGlade
 

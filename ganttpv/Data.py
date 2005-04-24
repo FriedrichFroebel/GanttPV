@@ -70,6 +70,8 @@
 # 050328 - derive parent dates from children
 # 050329 - support multi-value list type columns (for predecessors, successors, children, and resource names)
 # 050402 - handle task w/ self for parent
+# 050407 - Alexander - close deleted reports and prevent them from opening
+# 050409 - Alexander - added GetModuleNames for use in GanttPV.py and Menu.py
 
 # import calendar
 import datetime
@@ -85,6 +87,14 @@ if debug: print "load Data.py"
 # 1- Use Update for all changes
 # 2- Make change will decide the impact of the changes
 # 3- Use SetUndo to tell GanttPV to fix anything in response to the changes
+
+def GetModuleNames():
+    """ Return the GanttPV modules as a namespace dictionary.
+
+    This dictionary should be passed to any scripts run with execfile.
+    """
+    import Data, GanttPV, GanttReport, ID, Menu, UI, wx
+    return locals()
 
 # Clients should treat these tables as read only data
 Database = {}           # will contain pointers to all of these tables
@@ -343,7 +353,7 @@ def SetEmptyData():
                 ( 11, 4, 9, 80,         'Duration',             'DurationHours', 'INT',         '','',          '', 0, '' ),
                 ( 12, 4, 10, 80,        'Start Date\n(Calculated)', 'CalculatedStartDate', 'DATE',      '','',          '', 0, '' ),
                 ( 13, 4, 11, 80,        'End Date\n(Calculated)', 'CalculatedEndDate', 'DATE',  '','',          '', 0, '' ),
-                ( 14, 4, 0, None,       '',                     '',             'CHART',        '','',          'Day', 21, '2004-04-13' ),
+                ( 14, 4, 0, None,       '',                     '',             'CHART',        '','',          'Day', 21, GetToday() ),
                 (  50, 2, None, 140, None, None, None, None, None, None, None, None )
             )
     FillTable('ReportColumn', ReportColumn, Columns, Data)
@@ -712,13 +722,15 @@ def CheckChange(change):  # change contains the undo info for the changes (only 
 
 def RefreshReports():
     if debug: print "Start RefreshReports"
-    for k, v in OpenReports.items():  # invalid reports might be closed during this loop
+    for k, v in OpenReports.items():  # invalid or deleted reports might be closed during this loop
         if debug: print 'reportid', k
         if v == None: continue
+        if Report[k].get('zzStatus', 'active') == 'deleted':
+            CloseReport(k)
         if k != 1: v.SetReportTitle()  # only grid reports
         Menu.AdjustMenus(v)
         v.Refresh()
-        #v.Report.RefreshReport()  # update displayed data
+        # v.Report.RefreshReport()  # update displayed data
         v.Report.Refresh()  # update displayed data (needed for Main on Windows, not needed on Mac)
     if debug: print "End RefreshReports"
 
@@ -1725,6 +1737,8 @@ def SaveOption():
 
 def OpenReport(id):  # this should not be called for report #1
     r = Database['Report'][id]
+    if r.get('zzStatus', 'active') == 'deleted':
+        return
     if not r.get('ReportTypeID'): return  # don't open if not report type id (can happen if "undone")
     if r.get('Open') and OpenReports.get(id):
         OpenReports[id].Raise()  # allow attempt to open a report that is already open
@@ -1795,8 +1809,7 @@ def MakeReady():
 #    RefreshReports()  # needed?? -- not here, this routine is back end
 
 def LoadContents(self):
-    """ Load the contents of our document into memory.
-    """
+    """ Load the contents of our document into memory. """
     global Database
 
     f = open(FileName, "rb")
@@ -1807,8 +1820,7 @@ def LoadContents(self):
     MakeReady()
 
 def SaveContents(self):
-    """ Save the contents of our document to disk.
-    """
+    """ Save the contents of our document to disk. """
     global ChangedData
 
     f = open(FileName, "wb")
@@ -1823,15 +1835,16 @@ def OpenFile(name):
     global FileName
     title = os.path.basename(name)
     FileName = name
-    OpenReports[1].SetTitle(title)
     LoadContents(None)
+    OpenReports[1].SetTitle(title)
     OpenReports[1].Show(True)
 
 def AskIfUserWantsToSave(self, action):
     """ Give the user the opportunity to save the current document.
-        'action' is a string describing the action about to be taken.  If
-        the user wants to save the document, it is saved immediately.  If
-        the user cancels, we return False.
+
+    'action' is a string describing the action about to be taken.  If
+    the user wants to save the document, it is saved immediately.  If
+    the user cancels, we return False.
     """
     global FileName
     if not ChangedData: return True # Nothing to do.
