@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # gantt report definition
 
-# Copyright 2004 by Brian C. Christensen
+# Copyright 2004, 2005 by Brian C. Christensen
 
 #    This file is part of GanttPV.
 #
@@ -66,6 +66,8 @@
 #                a column or a row, but at least it will be less annoying.
 # 050106 - fixed bug where deleted records threw off location of inserted rows
 # 050202 - remove line feed from insert column menu text
+# 050423 - move logic to calculate period start and hours to Data.GetPeriodInfo
+# 050424 - fix ScrollToTask for M & Q
 
 import wx, wx.grid
 import datetime
@@ -496,32 +498,34 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
         ix = Data.DateConv[fdate]
         of = self.table.coloffset[col]
 
-        if ctname[0:3] == "Day":
-            dh, cumh, dow = Data.DateInfo[ix  + of]
-        elif ctname[0:4] == "Week":
-            ix -= Data.DateInfo[ ix ][2]  # convert to beginning of week
-            dh, cumh, dow = Data.DateInfo[ix  + of * 7]
-            dh2, cumh2, dow2 = Data.DateInfo[ix  + (of + 1) * 7]
-            dh = cumh2 - cumh
-        elif ctname[0:3] == "Mon":
-            ix -= int(Data.DateIndex[ ix ][8:10]) - 1  # convert to beginning of month
-            ix = Data.AddMonths(ix, of)
-            dh, cumh, dow = Data.DateInfo[ix]
-            dh2, cumh2, dow2 = Data.DateInfo[Data. AddMonths(ix, 1)]
-            dh = cumh2 - cumh
-        elif ctname[0:3] == "Qua":
-            year = fdate[0:4]
-            mo = fdate[5:7]
-            if   mo <= "03": mo = "01"
-            elif mo <= "06": mo = "04"
-            elif mo <= "09": mo = "07"
-            else:            mo = "10"
-            ix = Data.DateConv[ year + '-' + mo + '-01' ]  # convert to beginning of quarter
-            ix = Data.AddMonths(ix, of * 3)
-            dh, cumh, dow = Data.DateInfo[ix]
-            dh2, cumh2, dow2 = Data.DateInfo[Data. AddMonths(ix, 3)]
-            dh = cumh2 - cumh
-        else: return
+        dh, cumh, dow = Data.GetPeriodInfo(ctname, ix, of)  # if period not recognized, defaults to day
+
+#        if ctname[0:3] == "Day":
+#            dh, cumh, dow = Data.DateInfo[ix  + of]
+#        elif ctname[0:4] == "Week":
+#            ix -= Data.DateInfo[ ix ][2]  # convert to beginning of week
+#            dh, cumh, dow = Data.DateInfo[ix  + of * 7]
+#            dh2, cumh2, dow2 = Data.DateInfo[ix  + (of + 1) * 7]
+#            dh = cumh2 - cumh
+#        elif ctname[0:3] == "Mon":
+#            ix -= int(Data.DateIndex[ ix ][8:10]) - 1  # convert to beginning of month
+#            ix = Data.AddMonths(ix, of)
+#            dh, cumh, dow = Data.DateInfo[ix]
+#            dh2, cumh2, dow2 = Data.DateInfo[Data. AddMonths(ix, 1)]
+#            dh = cumh2 - cumh
+#        elif ctname[0:3] == "Qua":
+#            year = fdate[0:4]
+#            mo = fdate[5:7]
+#            if   mo <= "03": mo = "01"
+#            elif mo <= "06": mo = "04"
+#            elif mo <= "09": mo = "07"
+#            else:            mo = "10"
+#            ix = Data.DateConv[ year + '-' + mo + '-01' ]  # convert to beginning of quarter
+#            ix = Data.AddMonths(ix, of * 3)
+#            dh, cumh, dow = Data.DateInfo[ix]
+#            dh2, cumh2, dow2 = Data.DateInfo[Data. AddMonths(ix, 3)]
+#            dh = cumh2 - cumh
+#        else: return
         # if debug: print 'ix, dh, cumh', ix, dh, cumh
 
         # clear the background
@@ -579,7 +583,10 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
                         dc.DrawRectangle(rect.x+xof, rect.y+yof, rect.width-wof-xof, yh)
                     else:
                         dc.DrawRectangle((rect.x+xof, rect.y+yof), (rect.width-wof-xof, yh))
-            drawbar(es, ef, plancolor, 6, rect.height-12)
+            if task.get('SubtaskCount'):
+                drawbar(es, ef, plancolor, 6, (rect.height-12)//2)  # half-height bar
+            else:
+                drawbar(es, ef, plancolor, 6, rect.height-12)
 
             # asd = task.get('ActualStartDate')
             # aed = task.get('ActualEndDate') or Data.Today()
@@ -1308,12 +1315,18 @@ class GanttReportFrame(UI.ReportFrame):
             if not timep:
                 continue
             elif timep[0]  == 'D':
-                newdate = Data.DateIndex[datex + offset]
+                datex += offset
             elif timep[0]  == 'W':
                 datex -= Data.DateInfo[ datex ][2]  # convert to beginning of week
-                newdate = Data.DateIndex[datex + offset * 7]
+                datex += offset * 7
+            elif timep[0]  == 'M':
+                datex = Data.AddMonths(datex, offset)
+            elif timep[0]  == 'Q':
+                datex = Data.AddMonths(datex, offset * 3)
             else:  # if we don't recognize the time period
                 continue
+            if datex < 0 or datex > len(Data.DateIndex): continue  # don't set to invalid date
+            newdate = Data.DateIndex[datex]
             change['ID'] = s
             change['FirstDate'] = newdate
             Data.Update(change)
@@ -1348,15 +1361,17 @@ class GanttReportFrame(UI.ReportFrame):
             datex = Data.DateConv[newdate]
             ctid = Data.ReportColumn[s]['ColumnTypeID']
             timep = Data.ColumnType[ctid].get('Name')
-            if not timep:
-                continue
-            elif timep[0]  == 'D':
-                newdate = Data.DateIndex[datex]
-            elif timep[0]  == 'W':
-                datex -= Data.DateInfo[ datex ][2]  # convert to beginning of week
-                newdate = Data.DateIndex[datex]
-            else:  # if we don't recognize the time period
-                continue
+            if not timep: continue
+            ix = Data.GetPeriodStart(timep, datex, 0)
+            if not ix: continue
+            newdate = Data.DateIndex[datex]
+            #elif timep[0]  == 'D':
+            #    newdate = Data.DateIndex[datex]
+            #elif timep[0]  == 'W':
+            #    datex -= Data.DateInfo[ datex ][2]  # convert to beginning of week
+            #    newdate = Data.DateIndex[datex]
+            #else:  # if we don't recognize the time period
+            #    continue
             change['ID'] = s
             change['FirstDate'] = newdate
             Data.Update(change)

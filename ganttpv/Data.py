@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Data Tables - includes update logic, date routines, and gantt calculations
 
-# Copyright 2004 by Brian C. Christensen
+# Copyright 2004, 2005 by Brian C. Christensen
 
 #    This file is part of GanttPV.
 #
@@ -72,6 +72,8 @@
 # 050402 - handle task w/ self for parent
 # 050407 - Alexander - close deleted reports and prevent them from opening
 # 050409 - Alexander - added GetModuleNames for use in GanttPV.py and Menu.py
+# 050423 - moved GetPeriodInfo logic to calculate period start and hours to Data from GanttReport.py;
+#		added GetColumnDate; save "SubtaskCount" in Task table 
 
 # import calendar
 import datetime
@@ -962,11 +964,64 @@ def AddMonths(ix, months):
     adds specified number of months to index
     returns first day of month
     """
-    cnt = 0
-    while cnt < months:
-        ix = DateNextMonth[DateIndex[ix][0:7]]
-        cnt += 1
+    if months > 0:
+        cnt = 0
+        while cnt < months and ix < len(DateIndex):
+            yymm = DateIndex[ix][0:7]
+            if DateNextMonth.has_key(yymm):
+                ix = DateNextMonth[yymm]
+            cnt += 1
+    else:
+        months *= -1
+        yy, mm = int(DateIndex[ix][0:4]), int(DateIndex[ix][5:7])
+        cnt = 0
+        while cnt < months:
+            mm += -1
+            if mm < 1: mm = 12; yy += -1
+            cnt += 1
+        newdate = "%04d-%02d-01" % (yy, mm)
+        if DateConv.has_key(newdate):
+            ix = DateConv[newdate]
     return ix
+
+def GetPeriodStart(period, ix, of):
+    return GetPeriodInfo(period, ix, of, 1)
+
+def GetPeriodInfo(period, ix, of, index=0):  # needed by server
+    """
+    Returns: hours in period, hours index of start of period, day of week of start of period 
+    """
+    period = period[0:3]
+    if period == "Wee":
+        ix -= DateInfo[ ix ][2]  # convert to beginning of week
+        dh, cumh, dow = DateInfo[ix  + of * 7]
+        dh2, cumh2, dow2 = DateInfo[ix  + (of + 1) * 7]
+        dh = cumh2 - cumh
+    elif period == "Mon":
+        ix -= int(DateIndex[ ix ][8:10]) - 1  # convert to beginning of month
+        ix = AddMonths(ix, of)
+        dh, cumh, dow = DateInfo[ix]
+        dh2, cumh2, dow2 = DateInfo[AddMonths(ix, 1)]
+        dh = cumh2 - cumh
+    elif period == "Qua":
+        year = DateIndex[ ix ][0:4]
+        mo = DateIndex[ ix ][5:7]
+        if   mo <= "03": mo = "01"
+        elif mo <= "06": mo = "04"
+        elif mo <= "09": mo = "07"
+        else:            mo = "10"
+        ix = DateConv[ year + '-' + mo + '-01' ]  # convert to beginning of quarter
+        ix = AddMonths(ix, of * 3)
+        dh, cumh, dow = DateInfo[ix]
+        dh2, cumh2, dow2 = DateInfo[AddMonths(ix, 3)]
+        dh = cumh2 - cumh
+    else: # period == "Day":
+        ix += of
+        dh, cumh, dow = DateInfo[ix]
+    if index:
+        return ix
+    else:
+        return (dh, cumh, dow)
 
 # -----------------
 def GetToday():
@@ -1014,11 +1069,11 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
 
         # if debug: print "task data", k, v
         p = v.get('ParentTaskID')
-        if p and p != k:  # ignore parent pointer if it points to self
+        if p and p != k and Task.has_key(p):  # ignore parent pointer if it points to self
             if parent.has_key(p):
-                parent[p] += 1
+                parent[p] += 1  # count the number of children
             else:
-                parent[p] = 1
+                parent[p] = 1  # add to list of parents
 
     if debug: print "parent counts", parent
     for k in parent.keys():  # clear parent dates, will calculate dates from children
@@ -1027,7 +1082,7 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
         # del pre[k]
         # del suc[k]
 
-        if debug: print "clearing parent", k, Task[k]
+        # if debug: print "clearing parent", k, Task[k]
         # update database -- doesn't use Update, but may in the future
         Task[k]['hES'] = None
         Task[k]['hEF'] = None
@@ -1038,7 +1093,7 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
         Task[k]['hLF'] = None
         Task[k]['FreeFloatHours'] = None
         Task[k]['TotalFloatHours'] = None
-        if debug: print "cleared parent", k, Task[k]
+        # if debug: print "cleared parent", k, Task[k]
 
     for k, v in Dependency.iteritems():
         # if debug: print "dependency record", v
@@ -1160,12 +1215,15 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                 for t in pre[k]: succnt[t] -= 1
                 succnt[k] = -1
 
-    # look more closely into impact of deleted records
     for k, v in Task.iteritems():  # derive parent dates from children
+            # reminder: make sure this handles deleted & purged records properly
         if v.get('zzStatus', 'active') == 'deleted': continue
-        if parent.has_key(k): continue  # skip non-parent tasks
+        if parent.has_key(k):
+            Task[k]['SubtaskCount'] = parent[k]  # save count of child tasks
+            continue  # skip parent tasks
+        if Task[k].has_key('SubtaskCount'): del Task[k]['SubtaskCount']  # do I need to test first?
         p = v.get('ParentTaskID')
-        if not p or k == p: continue  # ignore all tasks that don't have parents (or have self for parent)
+        if not p or k == p: continue  # ignore all tasks w/o parents (or w/ self for parent)
         # if debug: print "adjust parents of ", k, v
         # update database -- doesn't use Update, but may in the future
         hes, hef, hls, hlf = [ v.get(x) for x in ['hES', 'hEF', 'hLS', 'hLF']]
@@ -1189,6 +1247,46 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                                        
 # end of GanttCalculation
 # -----------------
+
+def GetColumnDate(colid, of):  # required by server
+        """
+    colid == ReportColumn ID; of == the offset; returns the index of first day of period
+        """
+        if of == -1:
+		return None
+        else:
+            ctid = ReportColumn[colid].get('ColumnTypeID')  # get column type record that corresponds to this column
+            if not ctid or not ColumnType.has_key(ctid): return ""  # shouldn't happen
+            ct = ColumnType[ctid]
+            ctperiod, ctfield = ct.get('Name').split("/")
+
+            firstdate = ReportColumn[colid].get('FirstDate')
+
+            if not DateConv.has_key(firstdate): firstdate = GetToday()
+            index = DateConv[ firstdate ]
+
+            if ctperiod == "Day":
+                result = index + of
+            elif ctperiod == "Week":
+                index -= DateInfo[ index ][2]  # convert to beginning of week
+                result = index + (of * 7)
+            elif ctperiod == "Month":
+                index -= int(DateIndex[ index ][8:10]) - 1  # convert to beginning of month
+                result = AddMonths(index, of)
+            elif ctperiod == "Quarter":
+                year = firstdate[0:4]
+                mo = firstdate[5:7]
+                if   mo <= "03": mo = "01"
+                elif mo <= "06": mo = "04"
+                elif mo <= "09": mo = "07"
+                else:            mo = "10"
+                index = DateConv[ year + '-' + mo + '-01' ]  # convert to beginning of quarter
+                result = AddMonths(index, of * 3)
+            else:
+                return None  # unknown time scale
+        if result > len(DateConv): return None
+        return result  # should test to make sure it is valid
+
 def GetColumnHeader(colid, of):
         """
     colid == ReportColumn ID; of == the offset; returns the first and second header line
@@ -1242,7 +1340,7 @@ def GetColumnHeader(colid, of):
                     date = DateIndex[ AddMonths(index, of * 3) ]
                     if of == 0 or date[5:7] == '01': label = date[2:4]
                     else: label = ''
-                    label += '\n' +  date[5:7]
+                    label += '\nQ' +  str((int(date[5:7]) + 2)//3) 
                 else:
                     label = "-"  # unknown time scale
             else: 
