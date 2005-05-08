@@ -24,60 +24,77 @@
 # 040423 - added Scripts menu
 # 040505 - renamed some ID's from 'Task' to 'Row'
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
+# 050503 - Alexander - added Window menu support; re-numbered IDs; used standard wx constants for some menu items
 
-# Our menu item IDs:
-# File
+# -------- wx menu item IDs --------
 
-UNDO          = 1001 # Edit menu items.
-REDO          = 1002
-# edit_DUPLICATE     = 1003
-# edit_DELETE        = 1005
+# wx.ID_NEW  # File menu
+# wx.ID_OPEN
+# wx.ID_CLOSE
+# wx.ID_CLOSE_ALL
+# wx.ID_SAVE
+# wx.ID_SAVEAS
+# wx.ID_EXIT
 
-FIND_SCRIPTS    = 1201 # Scripts menu
+# wx.ID_UNDO  # Edit menu
+# wx.ID_REDO
 
-ABOUT          = 101 # Help menu items.
-HOME_PAGE      = 102
-HELP           = 103
-HELP_PAGE      = 104
-FORUM          = 105
+# wx.ID_MAXIMIZE_FRAME  # Window menu
+# wx.ID_ICONIZE_FRAME
 
-# Our tool IDs:
-# Main
-NEW_PROJECT  = 2001
-NEW_REPORT   = 2002
-EDIT         = 2003
-DUPLICATE    = 2004
-DELETE       = 2005
-SHOW_HIDDEN_REPORT = 2006
+# wx.ID_ABOUT  # Help menu
+# wx.ID_HELP
 
-# Report
-INSERT_ROW      = 2101
-DUPLICATE_ROW   = 2102
-DELETE_ROW      = 2103
-MOVE_UP          = 2104
-MOVE_DOWN        = 2105
-PREREQUISITE     = 2106
-ASSIGN_RESOURCE  = 2107
-HIDE_ROW        = 2108
-SHOW_HIDDEN      = 2109
 
-INSERT_COLUMN   = 2201
-SELECT_CONTENTS = 2202
+# -------- our menu item IDs --------
+
+FIND_SCRIPTS   = 301  # Scripts menu
+
+HOME_PAGE   = 501  # Help menu
+HELP_PAGE   = 502
+FORUM       = 503
+
+FIRST_SCRIPT      = 11000  # ranges for generated items
+LAST_SCRIPT       = 11999
+FIRST_WINDOW      = 12000
+LAST_WINDOW       = 12999
+
+
+# -------- our tool IDs --------
+
+NEW_PROJECT  = 2101  # Main
+NEW_REPORT   = 2102
+EDIT         = 2103
+DUPLICATE    = 2104
+DELETE       = 2105
+SHOW_HIDDEN_REPORT = 2106
+
+INSERT_ROW      = 2201  # Report
+DUPLICATE_ROW   = 2202
+DELETE_ROW      = 2203
+MOVE_UP          = 2204
+MOVE_DOWN        = 2205
+PREREQUISITE     = 2206
+ASSIGN_RESOURCE  = 2207
+HIDE_ROW        = 2208
+SHOW_HIDDEN      = 2209
+
+INSERT_COLUMN   = 2301
+# SELECT_CONTENTS = 2302
 DELETE_COLUMN   = 2303
 MOVE_LEFT       = 2304
 MOVE_RIGHT      = 2305
 
 COLUMN_OPTIONS    = 2401
-SCROLL_LEFT_FAR  = 2402
-SCROLL_LEFT      = 2403
-SCROLL_RIGHT     = 2404
-SCROLL_RIGHT_FAR = 2405
-SCROLL_TO_TASK   = 2406
 
-# Resource
-NEW_RESOURCE     = 2401
-EDIT_RESOURCE    = 2402
-ASSIGN_TASK      = 2403
-DELETE_RESOURCE  = 2404
-HIDE_RESOURCE    = 2405
-SHOW_HIDDEN_RESOURCE = 2406
+SCROLL_LEFT_FAR  = 2502
+SCROLL_LEFT      = 2503
+SCROLL_RIGHT     = 2504
+SCROLL_RIGHT_FAR = 2505
+SCROLL_TO_TASK   = 2506
+# NEW_RESOURCE     = 2601  # Resource
+# EDIT_RESOURCE    = 2602
+# ASSIGN_TASK      = 2603
+# DELETE_RESOURCE  = 2604
+# HIDE_RESOURCE    = 2605
+# SHOW_HIDDEN_RESOURCE = 2606

@@ -36,6 +36,8 @@
 # 050311 - add OGL import
 # 050314 - add xmlrpclib import
 # 050409 - Alexander - implemented multi-level Scripts menu: AddMenuTree, SearchDir, and LinearTraversal functions; ScriptMenu and ScriptPath arrays.
+# 050503 - Alexander - implemented Window menu for easy window-switching
+# 050504 - Alexander - moved some menu event-handling here from GanttPV.py and GanttReport.py; centered dialogs on screen rather than current report.
 
 import wx, os, webbrowser
 import Data, ID, UI
@@ -49,46 +51,46 @@ if debug: print "load Menu.py"
 
 # --------- File Menu ------------
 
-def doNew(self, event):
+def doNew(event):
     """ Respond to the "New" menu command. """
     if debug: print "Start doNew"
-    if Data.AskIfUserWantsToSave(self, "creating new project file"):
+    if Data.AskIfUserWantsToSave("creating new project file"):
         if debug: print "Setup empty database"
-        Data.CloseReports() # close all open reports except #1
+        Data.CloseReports()  # close all open reports except #1
         Data.SetEmptyData()
         Data.MakeReady()
         Data.OpenReports[1].SetTitle("Main")
     if debug: print "End doNew"
 
-def doOpen(self, event):
+def doOpen(event):
     """ Respond to the "Open" menu command. """
-    if not Data.AskIfUserWantsToSave(self, "open project file"): return
+    if not Data.AskIfUserWantsToSave("opening a project file"): return
 
     curDir = os.getcwd()
-    fileName = wx.FileSelector("Open File", default_extension=".ganttpv",
-                               flags = wx.OPEN | wx.FILE_MUST_EXIST)
+    fileName = wx.FileSelector("Open File",
+                              default_extension=".ganttpv",
+                              wildcard="*.ganttpv",
+                              flags = wx.OPEN | wx.FILE_MUST_EXIST)
     if fileName == "": return
     fileName = os.path.join(os.getcwd(), fileName)
     os.chdir(curDir)
 
-    Data.CloseReports()         # close all open reports except #1
     Data.OpenFile(fileName)
 
 # I'm going to leave the close logic in each frame for the present
-# def doClose(self, event):  # what should I close? the report? all reports? 
+# def doClose(reportid):
 #     """ Respond to the "Close" menu command. """
-#    if Data.ChangedData:
-#        if not Data.AskIfUserWantsToSave(self, "closing"): return
-#
-        # del OpenReports(self.reportid)
-        # self.Destroy()
+#    if reportid == 1:
+#        doExit()
+#    else:
+#        Data.CloseReport(reportid == 1)
 
-def doSave(self, event):
+def doSave(event):
     """ Respond to the "Save" menu command. """
     if Data.FileName != None:
-        Data.SaveContents(self)
+        Data.SaveContents()
 
-def doSaveAs(self, event):
+def doSaveAs(event):
     """ Respond to the "Save As" menu command. """
     # global Data.FileName
     if Data.FileName == None:
@@ -110,36 +112,35 @@ def doSaveAs(self, event):
     Data.OpenReports[1].SetTitle(title)
 
     Data.FileName = fileName
-    Data.SaveContents(self)
+    Data.SaveContents()
 
-def doExit(self, event):
+def doExit(event):
     """ Respond to the "Quit" menu command. """
-    if not Data.AskIfUserWantsToSave(self, "exit GanttPV"): return
+    if not Data.AskIfUserWantsToSave("exiting GanttPV"): return
 
     if debug: print "Continue doExit"
     Data.CloseReports()
     Data.CloseReport(1)
-    # Main.GanttPV.ExitMainLoop()  # needed for windows??
-#    _app.ExitMainLoop()
-    if debug: print "End doExit"
+    if Data.App:
+        Data.App.ExitMainLoop()
 
 # not used yet
-def doRevert(self, event):
+def doRevert(event):
     """ Respond to the "Revert" menu command. """
     if not Data.ChangedData: return
 
     if wxMessageBox("Discard changes made to this file?", "Confirm",
-                    style = wx.OK | wx.CANCEL | wx.ICON_QUESTION,
-                    parent=self) == wx.CANCEL: return
+                    style = wx.OK | wx.CANCEL | wx.ICON_QUESTION
+                   ) == wx.CANCEL: return
     Data.LoadContents()
 
 # ---------- Edit Menu -------
 
-def doUndo(self, event):
+def doUndo(event):
     """ Respond to the "Undo" menu command. """
     Data.DoUndo()
 
-def doRedo(self, event):
+def doRedo(event):
     """ Respond to the "Undo" menu command. """
     Data.DoRedo()
 
@@ -147,16 +148,15 @@ def doRedo(self, event):
 
 ScriptMenu = []  # nested list of item and submenu names
 ScriptPath = []  # relative pathnames, arranged by script id
-FirstScriptID = 10000
-# menuOffset = 2  # required if I insert into the menu
 
-def doAddScripts(self):  # report should use this it initialize scripts menu
-    global ScriptMenu
+def doAddScripts(frame): 
+    """ Initialize scripts menu. """
     if len(ScriptMenu) > 0:
-        mb = self.GetMenuBar()
+        mb = frame.GetMenuBar()
         menuItem = mb.FindItemById(ID.FIND_SCRIPTS)
         menu = menuItem.GetMenu()
-        AddMenuTree(menu, ScriptMenu, FirstScriptID)
+        menu.AppendSeparator()
+        AddMenuTree(menu, ScriptMenu, ID.FIRST_SCRIPT)
 
 def AddMenuTree(menu, list, nextID):
     """ Add a nested list of items and submenus to menu.
@@ -166,40 +166,40 @@ def AddMenuTree(menu, list, nextID):
     List format is [(ignored), [item], [submenu, [item], ...] ...]
     """
     for i in list[1:]:
+        label = i[0].replace(':', '/')
         if len(i) > 1:
             submenu = wx.Menu()
             nextID = AddMenuTree(submenu, i, nextID)
-            menu.AppendMenu(nextID, i[0], submenu)
+            menu.AppendMenu(nextID, label, submenu)
         else:
-            menu.Append(nextID, i[0])
+            menu.Append(nextID, label)
         nextID += 1
     return nextID
 
-def SearchDir(path, maxDepth=0, showSuffix=None, hidePrefix=None):
+def SearchDir(path, maxDepth=0, showExtension=None, hidePrefix=None):
     """ Return a list of the files contained in path.
 
     Allow at most maxDepth sublevels.
-    Show only files whose names end with showSuffix.
+    If showExtension is given, list only the files with that extension.
     Ignore files and directories whose names begin with hidePrefix.
     List format is [path, [file], [subpath, [file], ...] ...]
     """
     found = [os.path.basename(path)]
     contents = os.listdir(path)
     for i in contents:
-        name = os.path.basename(i)
-        if name[:len('zzMeasure')] == 'zzMeasure' # ignore the zzMeasure folder
-        if hidePrefix and name[:len(hidePrefix)] == hidePrefix:
+        if i[:len('zzMeasure')] == 'zzMeasure': continue  # ignore the zzMeasure folder
+        if hidePrefix and i[:len(hidePrefix)] == hidePrefix:
             continue
-        fullpath = os.path.join(path, name)
+        fullpath = os.path.join(path, i)
         if maxDepth and os.path.isdir(fullpath):
-            subfind = SearchDir(fullpath, maxDepth-1, showSuffix, hidePrefix)
+            subfind = SearchDir(fullpath, maxDepth-1, showExtension, hidePrefix)
             if len(subfind) > 1:
                 found.append(subfind)
-        elif not showSuffix:
-            found.append([name])
-        elif name[-len(showSuffix):] == showSuffix:
-            nameRoot = name[:-len(showSuffix)]
-            found.append([nameRoot])
+        else:
+            root, ext = os.path.splitext(i)
+            if not showExtension or ext == showExtension:
+                found.append([root])
+
     return found
 
 def LinearTraversal(list, verbose=False, path=None):
@@ -224,31 +224,35 @@ def LinearTraversal(list, verbose=False, path=None):
 def GetScriptNames():
     global ScriptMenu, ScriptPath
     if debug: print 'start GetScriptNames'
-    sd = Data.Option.get('ScriptDirectory') or os.path.join(Data.Path, "Scripts")
-    ScriptMenu = SearchDir(sd, 2, '.py')
+    sd = Data.GetScriptDirectory()
+    ScriptMenu = SearchDir(sd, 2, '.py', '_')
     ScriptPath = LinearTraversal(ScriptMenu, True)
     if debug: print 'files found:', ScriptMenu
     if debug: print 'end GetScriptNames'
 
-def doFindScripts(self, event):
-    global ScriptMenu, ScriptPath
+def doFindScripts(event):
     if debug: print "Start doFindScripts"
 
     for v in Data.OpenReports.values():    # update menus for all open reports
         if len(ScriptPath) > 0:  # Remove old scripts from menu
             mb = v.GetMenuBar()
-            menuItem = mb.FindItemById(ID.FIND_SCRIPTS)
-            menu = menuItem.GetMenu()
-            i = 0
-            while i < len(ScriptPath):
-                menu.Remove(FirstScriptID + i)
-                i += 1
+            item = mb.FindItemById(event.GetId())
+            menu = item.GetMenu()
+            menuItems = menu.GetMenuItems()
+            menuItems.reverse()
+            for item in menuItems:
+                if ID.FIRST_SCRIPT <= item.GetId() <= ID.LAST_SCRIPT:
+                    menu.RemoveItem(item)
+                else:
+                    if item.IsSeparator():
+                        menu.RemoveItem(item)
+                    break
 
     GetScriptNames()
 
     if len(ScriptPath) <= 1: 
-        curDir = os.getcwd()  # save current directory
-        dlg = wx.DirDialog(self, "Choose Script directory",
+        curDir = os.getcwd()  # remember current directory
+        dlg = wx.DirDialog(None, "Choose Script directory",
                                 style = wx.DD_DEFAULT_STYLE|wx.DD_NEW_DIR_BUTTON)
         if dlg.ShowModal() == wx.ID_OK:
             sd = dlg.GetPath()
@@ -263,36 +267,162 @@ def doFindScripts(self, event):
 
     if debug: print "End doFindScripts"
 
-def doScript(self, event):
-    global ScriptPath
+def doScript(event):
     if debug: print "Start doScript"
-    id = event.GetId()
-    sd = Data.Option.get('ScriptDirectory') or os.path.join(Data.Path, "Scripts")
-    script = os.path.join(sd, ScriptPath[id - FirstScriptID] + '.py')
-    if debug: print "script file name:", script
-    try:
-        name_dict = Data.GetModuleNames()
-        name_dict['self'] = self
-        name_dict['thisFile'] = script
-        execfile(script, name_dict)
-    except IOError:
-        pass
+    id = event.GetId() - ID.FIRST_SCRIPT
+    sd = Data.GetScriptDirectory()
+    script = os.path.join(sd, ScriptPath[id] + '.py')
+    Data.RunScript(script)
     if debug: print "End doScript"
+
+# ------------ Window Menu -----------------
+
+WindowOrder = [(None, None)]  # [(report id, title), ...]
+
+def SearchWindowOrder(reportid):
+    index = 1
+    while index < len(WindowOrder):
+        if reportid == WindowOrder[index][0]:
+            return index
+        index += 1
+    return 0
+
+def ResetWindowMenus(): 
+    """ Clear and rebuild every Window menu. """
+    global ReportTitles, WindowOrder, ReportIds
+    for frame in Data.OpenReports.itervalues():
+        ClearWindowMenu(frame)
+    WindowOrder = [(1, None)]
+    for k in Data.OpenReports.iterkeys():
+        UpdateWindowMenuItem(k)
+
+def ClearWindowMenu(frame):
+    """ Clear the frame's Window menu. """
+    menu = frame.WindowMenu
+    menuItems = menu.GetMenuItems()
+    menuItems.reverse()
+    for item in menuItems:
+        if ID.FIRST_WINDOW < item.GetId() <= ID.LAST_WINDOW:
+            menu.RemoveItem(item)
+        else:
+            if item.IsSeparator():
+                menu.RemoveItem(item)
+            break
+
+def UpdateWindowMenuItem(reportid):
+    """ Update one item in every Window menu. """
+    if reportid == 1: return
+    report = Data.OpenReports.get(reportid)
+    if report:
+        title = report.GetTitle()
+    else:
+        title = None
+
+    index = SearchWindowOrder(reportid)
+    if index:
+        if title == WindowOrder[index][1]:
+            return
+        WindowOrder[index] = (reportid, title)
+    else:
+        if title == None:
+            return
+        index = len(WindowOrder)
+        if index > ID.LAST_WINDOW - ID.FIRST_WINDOW:
+            return
+        WindowOrder.append((reportid, title))
+
+    for v in Data.OpenReports.values():
+        RefreshWindowMenuItem(v, index)
+
+def FillWindowMenu(frame):
+    """ Fill the frame's Window menu. """
+    index = 1
+    while index < len(WindowOrder):
+        RefreshWindowMenuItem(frame, index)
+        index += 1
+
+def RefreshWindowMenuItem(frame, index):
+    """ Refresh one item in the frame's Window menu. """
+    if 0 < index < len(WindowOrder):
+        reportid, title = WindowOrder[index]
+    else:
+        return
+
+    id = index + ID.FIRST_WINDOW
+    menu = frame.WindowMenu
+    if menu.FindItemById(id):
+        menu.Remove(id)
+    elif title == None:
+        # Nothing was changed.
+        return
+
+    menuItems = menu.GetMenuItems()
+    if not title:
+        # Nothing to add, but don't leave a hanging separator.
+        if menuItems:
+            lastitem = menuItems[-1]
+            if lastitem.IsSeparator():
+                menu.RemoveItem(lastitem)
+        return
+
+    pos = 0    
+    while pos < len(menuItems):
+        # Skip the fixed items and the main window.
+        if menuItems[pos].GetId() > ID.FIRST_WINDOW:
+            break
+        pos += 1
+    if not (pos > 0 and menuItems[pos-1].IsSeparator()):
+        # Ensure a separator before the window names.
+        menu.InsertSeparator(pos)
+        menuItems = menu.GetMenuItems()
+        pos += 1
+    while pos < len(menuItems):
+        # Insert in lexicographical order.
+        if menuItems[pos].GetLabel() >= title:
+            break
+        pos += 1
+    while pos < len(menuItems):
+        if menuItems[pos].GetLabel() > title:
+            break
+        # Keep same-title items in the order they were opened.
+        r = menuItems[pos].GetId() - ID.FIRST_WINDOW
+        if SearchWindowOrder(r) > index:
+            break
+        pos += 1
+
+    menu.InsertCheckItem(pos, id, title, "Bring this window to front")
+    if reportid == frame.ReportID:
+        menu.Check(id, True)
+
+def doCloseReports(event):
+    Data.CloseReports()
+
+def doBringWindow(event):
+    id = event.GetId()
+
+    menu = event.GetEventObject()
+    check = not event.IsChecked()
+    menu.Check(id, check)
+
+    index = id - ID.FIRST_WINDOW
+    if index < len(WindowOrder):
+        reportid = WindowOrder[index][0]
+        report = Data.OpenReports.get(reportid)
+        if report:
+            report.Raise()
 
 # ------------ Help Menu -----------------
 
-def doHome(self, event):
-    if debug: print "start doHome"
+def doHome(event):
     webbrowser.open_new('http://www.PureViolet.net/ganttpv/')
-    if debug: print "end doHome"
 
-def doHelp(self, event):
+def doHelp(event):
     webbrowser.open_new('http://www.PureViolet.net/ganttpv/help/')
 
-def doForum(self, event):
+def doForum(event):
     webbrowser.open_new('http://www.SimpleProjectManagement.com/forum/')
 
-def doShowAbout(self, event):
+def doShowAbout(event):
     """ Respond to the "About GanttPV" menu command. """
 
     # dialog = wx.Dialog(self, -1, "About GanttPV") # ,
@@ -363,7 +493,7 @@ def doShowAbout(self, event):
     # dialog.SetSizer(topSizer)
     # topSizer.Fit(dialog)
 
-    dialog = UI.AboutDialog(self, -1, "About GanttPV") # ,
+    dialog = UI.AboutDialog(None, -1, "About GanttPV") # ,
                       #style=wx.DIALOG_MODAL | wx.STAY_ON_TOP)
     dialog.Centre()
 
@@ -392,11 +522,11 @@ def AdjustMenus(self):
     self.FileMenu.Enable(wx.ID_SAVE,   canSave)
     # self.FileMenu.Enable(wx.ID_REVERT, canRevert)
 
-    self.Edit.Enable(ID.UNDO,      canUndo)
-    self.Edit.Enable(ID.REDO,      canRedo)
+    self.Edit.Enable(wx.ID_UNDO,      canUndo)
+    self.Edit.Enable(wx.ID_REDO,      canRedo)
     mbar = self.GetMenuBar()
-    undoItem = mbar.FindItemById(ID.UNDO)
-    redoItem = mbar.FindItemById(ID.REDO)
+    undoItem = mbar.FindItemById(wx.ID_UNDO)
+    redoItem = mbar.FindItemById(wx.ID_REDO)
     # if debug and canUndo: print 'Data.UndoStack[-1]', Data.UndoStack[-1]
     # if canUndo: undoItem.SetText('Undo ' + Data.UndoStack[-1])
         # problem - shouldn't have to test for string, but somehow GanttReport onSelect is called while the top of the 

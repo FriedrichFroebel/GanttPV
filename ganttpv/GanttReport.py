@@ -68,6 +68,9 @@
 # 050202 - remove line feed from insert column menu text
 # 050423 - move logic to calculate period start and hours to Data.GetPeriodInfo
 # 050424 - fix ScrollToTask for M & Q
+# 050426 - Alexander - fixed bug where moving columns threw off displayed widths
+# 050504 - Alexander - implemented Window menu; moved some menu event-handling logic to Menu.py
+# 050505 - Alexander - updated time units feature to use the work week
 
 import wx, wx.grid
 import datetime
@@ -77,7 +80,7 @@ import Data, UI, ID, Menu
 import re
 
 debug = 1
-mac = 1
+mac = 1    # for mac [TODO: check OS type instead]
 is24 = 1
 
 if debug: print "load GanttReport.py"
@@ -87,12 +90,10 @@ if debug: print "load GanttReport.py"
 class GanttChartTable(wx.grid.PyGridTableBase):
     """ A custom wxGrid Table using user supplied data """
 
-    def __init__(self, reportidx):
+    def __init__(self, reportid):
         """ data is taken from SampleData """
         # The base class must be initialized *first*
         wx.grid.PyGridTableBase.__init__(self)
-
-        reportid = reportidx
 
         # create local pointers to SampleData?
         self.UpdateDataPointers(reportid)
@@ -239,20 +240,18 @@ class GanttChartTable(wx.grid.PyGridTableBase):
             else:
                 return
         elif type == 'u': 
-            # good result has len = 6;  (2 = week, 3 = day, 4 = hour) or (5 = hour)
-            # empty input has len = 1 and value = ''
-            # bad result has len = 1 and value != ''
-            result = re.split(r"^\s*(\d+w)?\s*(\d+d)?\s*(\d+h)?\s*$|^(\d+)$", value)  
-            if len(result) == 6:
-                if result[4]:
-                    v = int(result[4])
-                else:
+            result = re.match(r"^\s*(\d+w)?\s*(\d+d)?\s*(\d+h)?\s*$|^\s*(\d+)\s*$", value, re.I)
+            if result:
+                groups = result.groups() # [weeks, days, hours, None] or [None, None, None, hours]
+                if groups[3]:
+                    v = int(groups[3])
+                else:                    
                     v = 0
-                    if result[3]: v += int(result[3][:-1])
-                    if result[2]: v += int(result[2][:-1]) * 8
-                    if result[1]: v += int(result[1][:-1]) * 40
-            # elif len(result) == 1:  # this is already being checked for
-            #     v = ''
+                    if groups[2]: v += int(groups[2][:-1])
+                    if groups[1]: v += int(groups[1][:-1]) * Data.DayToHour
+                    if groups[0]: v += int(groups[0][:-1]) * Data.WeekToHour
+                    if v % 1: v += 1
+                    v = int(v)
             else: 
                  return
         else: v = value
@@ -619,13 +618,13 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
 
 class GanttChartGrid(wx.grid.Grid):
     def __init__(self, parent, reportid):
-        """
-        """
         wx.grid.Grid.__init__(self, parent, -1) # initialize base class first
-        self._table = GanttChartTable(reportid)
-        self.table = self._table  # treat table as an attribute that should be accessable
-                                  # (eventually convert all "_table" references to "table")
-        self.SetTable(self._table)
+
+        # self._table = GanttChartTable(reportid)
+        # self.table = self._table  # treat table as an attribute that should be accessable
+
+        self.table = GanttChartTable(reportid)
+        self.SetTable(self.table)
         self.DisableDragRowSize()
         self.UpdateColumnWidths()
         self.SetRowLabelSize(40)
@@ -638,7 +637,7 @@ class GanttChartGrid(wx.grid.Grid):
 
     def OnSelect(self, event):
         # if debug: print "OnSelect"
-        reportid = self._table.report['ID']
+        reportid = self.table.report['ID']
         f = Data.OpenReports[reportid]
         Menu.AdjustMenus(f)
         event.Skip()
@@ -650,21 +649,26 @@ class GanttChartGrid(wx.grid.Grid):
      #     self.grid_1.EnableDragRowSize(0)
 
      # def UpdateColumnWidths(self):
-     #    self._table.UpdateColumnWidths():
+     #    self.table.UpdateColumnWidths():
 
     def UpdateColumnWidths(self):
-        rc = self._table.reportcolumn  # pointer to table
-        for i, c in enumerate(self._table.columns):
-            of = self._table.coloffset[i]
-            if of == -1:
-                cw = rc[c].get('Width', 40) or 40
-                # print "column number:", i, "width:", cw
+        rc = Data.ReportColumn
+        for i, c in enumerate(self.table.columns):
+            of = self.table.coloffset[i]
+            ct = Data.ColumnType[self.table.ctypes[i]]
+            ctname = ct.get('Name')
+            if of > -1 and ctname and ctname[-6:] == "/Gantt":
+                self.SetColSize(i, 24)
+            else:
+                cw = rc[c].get('Width') or 40
                 self.SetColSize(i, cw)
         
     def Reset(self):
-        """reset the view based on the data in the table.  Call
-        this when rows are added or destroyed"""
-        self._table.ResetView(self)
+        """ Reset the view based on the data in the table.
+
+        Call this when rows are added or destroyed
+        """
+        self.table.ResetView(self)
 
 
 #------------------ MultiSelect Frame -----------------------------------
@@ -748,81 +752,57 @@ class GanttReportFrame(UI.ReportFrame):
 
         # these three commands were moved out of UI.ReportFrame's init
         self.report_window = GanttChartGrid(self.Report_Panel, reportid)
-        self.title = None # force update of title
         self.report_window.Reset()
         self.Report = self.report_window
         self.ReportID = reportid
+
+        # Data.OpenReports[reportid] = self
 
         self.set_properties()  # these are in the parent class
         self.do_layout()
 
         Menu.doAddScripts(self)
-        # Data.OpenReports[reportid] = self
+        Menu.FillWindowMenu(self)
         Menu.AdjustMenus(self)
+        self.SetReportTitle()
 
-    # def __init__(self, parent, reportid):
-    #     wx.Frame.__init__(self, parent, -1,
-    #                      "Test Frame", size=(640,480))
- 
-    #    grid = GanttChartGrid(self, reportid)
-    #    grid.Reset()
-
-    # def Reset(self): 
-    #    """ Call this routine whenever the database is replaced """
-    #    UpdateDataPointers(self)
-    #    UpdateColumnPointers(self)
-    #    UpdateRowPointers(self)
-    #    ResetView(self, self.grid)
-
-    # def Refresh(self):
-    #    """ Call this routine whenever data in the database changes """
-    #    UpdateValues(self, self.grid)
-
-    # ----- Menu and Toolbars
-
-        # Associate each menu/toolbar item with the method that handles that
-        # item.
-        if 1:  # mac only [TODO: check OS type instead]
-            wx.App_SetMacAboutMenuItemId(ID.ABOUT)
-            # wx.App_SetMacPreferencesMenuItemId(),
-            wx.App_SetMacExitMenuItemId(wx.ID_EXIT)
-            # wx.App_SetMacHelpMenuTitleName("&Help")
-            # wx.EVT_MENU(self, wx.ID_ABOUT,    self.doShowAbout)
-            # wx.EVT_MENU(self, wx.ID_PREFERENCES,    self.doNew)
-
-        wx.EVT_MENU(self, wx.ID_NEW,    self.doNew)
-        wx.EVT_MENU(self, wx.ID_OPEN,   self.doOpen)
+        # file menu events
+        wx.EVT_MENU(self, wx.ID_NEW,    Menu.doNew)
+        wx.EVT_MENU(self, wx.ID_OPEN,   Menu.doOpen)
         wx.EVT_MENU(self, wx.ID_CLOSE,  self.doClose)
-        wx.EVT_MENU(self, wx.ID_SAVE,   self.doSave)
-        wx.EVT_MENU(self, wx.ID_SAVEAS, self.doSaveAs)
-        # wx.EVT_MENU(self, wx.ID_REVERT, self.doRevert)
-        wx.EVT_MENU(self, wx.ID_EXIT, self.doExit)
-        # if 0:  # not mac [TODO: check OS type instead]
-        #        wx.EVT_MENU(self, wx.ID_EXIT,   self.doExit)
+        wx.EVT_MENU(self, wx.ID_CLOSE_ALL, Menu.doCloseReports)
+        wx.EVT_MENU(self, wx.ID_SAVE,   Menu.doSave)
+        wx.EVT_MENU(self, wx.ID_SAVEAS, Menu.doSaveAs)
+        # wx.EVT_MENU(self, wx.ID_REVERT, Menu.doRevert)
+        wx.EVT_MENU(self, wx.ID_EXIT, Menu.doExit)
 
-        wx.EVT_MENU(self, ID.UNDO,          self.doUndo)
-        wx.EVT_MENU(self, ID.REDO,          self.doRedo)
+        # edit menu events
+        wx.EVT_MENU(self, wx.ID_UNDO,          Menu.doUndo)
+        wx.EVT_MENU(self, wx.ID_REDO,          Menu.doRedo)
 
-        wx.EVT_MENU(self, ID.FIND_SCRIPTS, self.doFindScripts)
-        # Menu.doAddScripts(self)
-        wx.EVT_MENU_RANGE(self, Menu.FirstScriptID, Menu.FirstScriptID + 1000, self.doScript)
+        # script menu events
+        wx.EVT_MENU(self, ID.FIND_SCRIPTS, Menu.doFindScripts)
+        wx.EVT_MENU_RANGE(self, ID.FIRST_SCRIPT, ID.LAST_SCRIPT, Menu.doScript)
 
-        wx.EVT_MENU(self, ID.ABOUT, self.doShowAbout)
-        wx.EVT_MENU(self, ID.HOME_PAGE, self.doHome)
-        wx.EVT_MENU(self, ID.HELP_PAGE, self.doHelp)
-        wx.EVT_MENU(self, ID.FORUM, self.doForum)
+        # window menu events
+        wx.EVT_MENU_RANGE(self, ID.FIRST_WINDOW, ID.LAST_WINDOW, Menu.doBringWindow)
 
-        # Install our own method to handle closing the window.  This allows us
-        # to ask the user if he/she wants to save before closing the window, as
-        # well as keeping track of which windows are currently open.
+        # help menu events
+        wx.EVT_MENU(self, wx.ID_ABOUT, Menu.doShowAbout)
+        wx.EVT_MENU(self, ID.HOME_PAGE, Menu.doHome)
+        wx.EVT_MENU(self, ID.HELP_PAGE, Menu.doHelp)
+        wx.EVT_MENU(self, ID.FORUM, Menu.doForum)
 
+        # frame events
+        wx.EVT_ACTIVATE(self, self.OnActivate)
         wx.EVT_CLOSE(self, self.doClose)
-        wx.EVT_SIZE(self, self.OnSize)  # report window size
+        wx.EVT_SIZE(self, self.OnSize)
         wx.EVT_MOVE(self, self.OnMove)
+
+        # grid events
         wx.grid.EVT_GRID_COL_SIZE(self, self.OnColSize)
         wx.grid.EVT_GRID_ROW_SIZE(self, self.OnRowSize)
         wx.grid.EVT_GRID_EDITOR_SHOWN(self, self.OnEditorShown)
-
 
         # tool bar events
         wx.EVT_TOOL(self, ID.INSERT_ROW, self.OnInsertRow)
@@ -878,7 +858,7 @@ class GanttReportFrame(UI.ReportFrame):
 
         if len(s) == 0 or tb: rlist.append(newrowid)  # if no selection add to end
         else:
-            rid = self.Report._table.rows[min(s)] # convert to rowid
+            rid = self.Report.table.rows[min(s)] # convert to rowid
             pos = rlist.index(rid)  # find position of selected row (should always work)
             rlist.insert(pos, newrowid)  # insert before first selected row
         Data.ReorderReportRows(self.ReportID, rlist)
@@ -895,7 +875,7 @@ class GanttReportFrame(UI.ReportFrame):
         tablea = Data.ReportType[rtid].get('TableA')
         new = []
         for s in sel:
-            rid = self.Report._table.rows[s]
+            rid = self.Report.table.rows[s]
             ta = Data.ReportRow[rid]['TableName']
             if ta != tablea: continue  # only duplicate rows of primary table type
             rcopy = Data.ReportRow[rid].copy()  # report row
@@ -928,7 +908,7 @@ class GanttReportFrame(UI.ReportFrame):
         change = { 'Table': None, 'ID': None, 'zzStatus': 'deleted' }
         cnt = 0
         for s in sel:
-            rid = self.Report._table.rows[s]
+            rid = self.Report.table.rows[s]
             ta = Data.ReportRow[rid].get('TableName')
             id = Data.ReportRow[rid].get('TableID')
             if not id: continue  # silently skip invalid table id's
@@ -969,7 +949,7 @@ class GanttReportFrame(UI.ReportFrame):
             if debug: print "can't move up"
             return  # can't move up, we're already there
         last = max(sel)
-        rows = self.Report._table.rows  # list of displayed rows
+        rows = self.Report.table.rows  # list of displayed rows
         if last == len(rows) - 1 and id == ID.MOVE_DOWN: 
             if debug: print "can't move down"
             return  # can't move down, we're already there
@@ -999,7 +979,7 @@ class GanttReportFrame(UI.ReportFrame):
 
         # make sure the same rows are selected so the same rows can be moved again
         # selection will be thrown off by undo -- is that a problem? (selection is not an undo-able event)
-        # sel = [ self.Report._table.rows.index(x) for x in rids ]  #~~ find the new positions
+        # sel = [ self.Report.table.rows.index(x) for x in rids ]  #~~ find the new positions
         self.Report.ClearSelection()
         if id == ID.MOVE_UP: sel = [ x - 1 for x in sel ]  # assume everything moved one row
         else: sel = [ x + 1 for x in sel ]
@@ -1007,13 +987,13 @@ class GanttReportFrame(UI.ReportFrame):
         for x in sel: self.Report.SelectRow(x, True)
 
     def OnPrerequisite(self, event):
-        # list tasks in the same order they appear now  -- use self.Report._table.rows
+        # list tasks in the same order they appear now  -- use self.Report.table.rows
         # highlight the ones that are currently prerequisites
         sel = self.Report.GetSelectedRows()  # current selection
         if len(sel) != 1: 
             if debug: print "only prereq's for one task"
             return  # only move if rows selected
-        rows = self.Report._table.rows
+        rows = self.Report.table.rows
         sel = sel[0]
         rowid = rows[sel]  # get selection's task id
         ta = Data.ReportRow[rowid].get('TableName')
@@ -1063,7 +1043,7 @@ class GanttReportFrame(UI.ReportFrame):
         if len(sel) != 1: 
             if debug: print "only assignments for one task"
             return  # only move if rows selected
-        rows = self.Report._table.rows
+        rows = self.Report.table.rows
         sel = sel[0]  # make it not a list
         rowid = rows[sel]  # get selected task's id
         sid = Data.ReportRow[rowid].get('TableID')
@@ -1117,7 +1097,7 @@ class GanttReportFrame(UI.ReportFrame):
 
     def OnHide(self, event):
         sel = self.Report.GetSelectedRows()  # user's selection
-        Menu.onHide(self.Report._table, event, sel)
+        Menu.onHide(self.Report.table, event, sel)
 
     def OnShowHidden(self, event):
         Menu.onShowHidden(self, event)
@@ -1205,7 +1185,7 @@ class GanttReportFrame(UI.ReportFrame):
 
         change = { 'Table': 'ReportColumn', 'zzStatus': 'deleted' }
         for i in s:
-            change['ID'] = self.Report._table.columns[i]
+            change['ID'] = self.Report.table.columns[i]
             Data.Update(change)
 
         Data.ReorderReportColumns(self.ReportID, [])  # keeps columns in same order, omits deleted ones
@@ -1225,9 +1205,9 @@ class GanttReportFrame(UI.ReportFrame):
         id = event.GetId()  # move left or right?
         if debug: print "event id", id
         clist = Data.GetColumnList(self.ReportID)  # complete list of row id's in display order
-        first = self.Report._table.columns[min(sel)]  # first and last selected column id's
-        firstoff = self.Report._table.coloffset[min(sel)]  # save original offset
-        last = self.Report._table.columns[max(sel)]
+        first = self.Report.table.columns[min(sel)]  # first and last selected column id's
+        firstoff = self.Report.table.coloffset[min(sel)]  # save original offset
+        last = self.Report.table.columns[max(sel)]
         if debug: print "first, firstoff, last", first, firstoff, last
 
         # find position of first and last in clist
@@ -1261,8 +1241,8 @@ class GanttReportFrame(UI.ReportFrame):
 
         # make sure the same columns are selected so the same columns can be moved again
         # selection will be thrown off by undo -- is that a problem? (selection is not an undo-able event)
-        for i in range(len(self.Report._table.columns)):
-            if self.Report._table.columns[i] == first and self.Report._table.coloffset[i] == firstoff:
+        for i in range(len(self.Report.table.columns)):
+            if self.Report.table.columns[i] == first and self.Report.table.coloffset[i] == firstoff:
                 break
         sel = [ i + x for x in range(len(sel)) ]
         if debug: print 'new sel', sel
@@ -1280,7 +1260,7 @@ class GanttReportFrame(UI.ReportFrame):
         sel = self.Report.GetSelectedCols()  # current selection
         if len(sel) > 0: 
             for s in sel:
-                cid = self.Report._table.columns[s]
+                cid = self.Report.table.columns[s]
                 ctid = Data.ReportColumn[cid]['ColumnTypeID']
                 if Data.ColumnType[ctid].get('AccessType') == 's':
                     if scrollcols.count(cid) == 0: 
@@ -1340,7 +1320,7 @@ class GanttReportFrame(UI.ReportFrame):
         if len(sel) < 1: 
             if debug: print "can't scroll, no tasks selected"
             return  # only move if columns selected
-        s = self.Report._table.rows[min(sel)]  # just use first row
+        s = self.Report.table.rows[min(sel)]  # just use first row
         rs = Data.ReportRow[s]
         if rs.get('TableName') != 'Task': 
             if debug: print "tablename", rs.get('TableName')
@@ -1381,64 +1361,10 @@ class GanttReportFrame(UI.ReportFrame):
 
         # wx.EVT_TOOL(self, ID.COLUMN_OPTIONS, self.OnGanttOptions)
 
-    # ---- Menu Command -----
-
-    # File Menu
-    def doNew(self, event):
-        Menu.doNew(self, event)
-
-    def doOpen(self, event):
-        Menu.doOpen(self, event)
+    # ---- menu Commands -----
 
     def doClose(self, event):
-        # if Data.ChangedData:
-        #    if not Data.AskIfUserWantsToSave(self, "closing"): return
         Data.CloseReport(self.ReportID)
-        # Data.Report[self.ReportID]["Open"] = False
-        # del Data.OpenReports[self.ReportID]
-        # self.Destroy()
-
-    def doSave(self, event):
-        Menu.doSave(self, event)
-
-    def doSaveAs(self, event):
-        Menu.doSaveAs(self, event)
-
-    def doExit(self, event):
-        Menu.doExit(self, event)
-
-    # Edit Menu
-    def doUndo(self, event):
-        # if debug: print Data.ReportColumn[11]
-        # if debug: print Data.ReportColumn[13]
-        Menu.doUndo(self, event)
-        # if debug: print "GetColumnList", Data.GetColumnList(self.ReportID)
-        # if debug: print Data.ReportColumn[11]
-        # if debug: print Data.ReportColumn[13]
-
-    def doRedo(self, event):
-        Menu.doRedo(self, event)
-        # if debug: print "GetColumnList", Data.GetColumnList(self.ReportID)
-
-    # Script Menu
-    def doFindScripts(self, event):
-        Menu.doFindScripts(self, event)
-
-    def doScript(self, event):
-        Menu.doScript(self, event)
-
-    # Help Menu
-    def doShowAbout(self, event):
-        Menu.doShowAbout(self, event)
-
-    def doHome(self, event):
-        Menu.doHome(self, event)
-
-    def doHelp(self, event):
-        Menu.doHelp(self, event)
-
-    def doForum(self, event):
-        Menu.doForum(self, event)
 
     # ----------------- window size/position 
     def OnSize(self, event):
@@ -1459,6 +1385,12 @@ class GanttReportFrame(UI.ReportFrame):
 
         event.Skip()  # needed?
 
+    # ---------------- activate
+    def OnActivate(self, event):
+        if event.GetActive():
+            Data.ActiveReport = self.ReportID
+        event.Skip()
+
     # ---------------- Column/Row resizing
     def OnRowSize(self, evt): pass
         # self.log.write("OnRowSize: row %d, %s\n" %
@@ -1470,8 +1402,8 @@ class GanttReportFrame(UI.ReportFrame):
         if debug: print "get col width", self.Report.GetColSize(evt.GetRowOrCol())
         newsize = self.Report.GetColSize(evt.GetRowOrCol())
         col = evt.GetRowOrCol()
-        if self.Report._table.coloffset[col] == -1:  # not a gantt column
-            colid = self.Report._table.columns[col]
+        if self.Report.table.coloffset[col] == -1:  # not a gantt column
+            colid = self.Report.table.columns[col]
             change = { 'Table': 'ReportColumn', 'ID': colid, 'Width': newsize }
             if debug: print 'change', change
             Data.Update(change, 0)  #  --------------------- don't allow Undo (until I can figure out how)
@@ -1483,10 +1415,10 @@ class GanttReportFrame(UI.ReportFrame):
     def OnEditorShown(self, evt):
         rtid = Data.Report[self.ReportID].get('ReportTypeID')
 
-        rid = self.Report._table.rows[evt.GetRow()]
+        rid = self.Report.table.rows[evt.GetRow()]
         rtable = Data.ReportRow[rid].get('TableName')
 
-        cid = self.Report._table.columns[evt.GetCol()]
+        cid = self.Report.table.columns[evt.GetCol()]
         ctid = Data.ReportColumn[cid].get('ColumnTypeID')
         which = Data.ColumnType[ctid].get('T') or 'Z'  # can be 'A', 'B', or 'X'
 
@@ -1501,13 +1433,14 @@ class GanttReportFrame(UI.ReportFrame):
     def SetReportTitle(self):
         rname = Data.Report[self.ReportID].get('Name') or "-"
         pid = Data.Report[self.ReportID].get('ProjectID')
-        if pid:
+        if Data.Project.has_key(pid):
             pname = Data.Project[pid].get('Name') or "-"
         else:
             pname = "-"
         title = pname + " / " + rname
-        if self.title != title:
+        if self.GetTitle() != title:
             self.SetTitle(title)
+            Menu.UpdateWindowMenuItem(self.ReportID)
 
     def UpdatePointers(self, all=0):  # 1 = new database; 0 = changed report rows or columns
         if debug: print "Start Update Gantt Report Pointers"
@@ -1516,13 +1449,15 @@ class GanttReportFrame(UI.ReportFrame):
             Data.CloseReport(self.ReportID)
             return
         if all:  # shouldn't happen. All reports should be closed before opening a new database
-            self.Report._table.UpdateDataPointers()
-        sr = self.Report._table
+            self.Report.table.UpdateDataPointers()
+        sr = self.Report.table
         rlen, clen = len(sr.rows), len(sr.columns)
         sr.UpdateColumnPointers()
         sr.UpdateRowPointers()
         if rlen != len(sr.rows) or clen != len(sr.columns):
             self.Report.Reset()  # tell grid that the number of rows or columns has changed
+        else:
+            self.report_window.UpdateColumnWidths()
         if debug: print "End Update Gantt Report Pointers"
 
 #---------------------------------------------------------------------------

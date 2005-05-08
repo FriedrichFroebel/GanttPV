@@ -46,6 +46,8 @@
 # 040914 - ReportTypes can be flagged as all/each/both for all projects or individual project use
 # 050202 - remove line feed from insert report menu text
 # 050409 - Alexander - added command-line support for opening .ganttpv files and .py scripts.
+# 050503 - Alexander - moved script-running logic to Data.py
+# 050504 - Alexander - implemented Window menu; moved some menu event-handling logic to Menu.py
 
 import wx
 import wx.grid
@@ -109,7 +111,7 @@ class ProjectReportList(wx.ListCtrl):
 
 
     def OnItemSelected(self, event):
-        self.currentItem = event.m_itemIndex
+        self.currentItem = event.GetIndex()
         Menu.AdjustMenus(Data.OpenReports[1])
 #        self.log.WriteText('OnItemSelected: "%s", "%s", "%s", "%s"\n' %
 #                           (self.currentItem,
@@ -118,7 +120,7 @@ class ProjectReportList(wx.ListCtrl):
 #                            self.getColumnText(self.currentItem, 2)))
 
     def OnItemActivated(self, event):  # double clicked or "ENTER" while selected
-        item = event.m_itemIndex
+        item = event.GetIndex()
         self.currentItem = item
 
         rr = self.reportrow[self.rows[item]]
@@ -135,12 +137,7 @@ class ProjectReportList(wx.ListCtrl):
                 # if project open project edit window
 
         elif rowtable == 'Report':
-            frame = Data.OpenReports.get(rowid)  # row id == report id
-            if frame:
-                #frame.Show(True)  # no, what command will bring the frame up front?
-                frame.Raise()  # Window method
-            else:
-                Data.OpenReport(rowid)
+            Data.OpenReport(rowid)  # row id == report id
 
         Menu.AdjustMenus(Data.OpenReports[1])
 
@@ -256,65 +253,58 @@ class ProjectReportList(wx.ListCtrl):
 class ProjectReportFrame(UI.MainFrame):
     def __init__(self, reportid, *args, **kwds):
         if debug: print 'ProjectReportFrame __init__'
-        # print 'self', self
+        # if debug: print 'self', self
         if debug: print 'reportid', reportid
         if debug: print 'args', args
         if debug: print 'kwds', kwds
-        # begin wxGlade: ReportFrame.__init__
         kwds["style"] = wx.DEFAULT_FRAME_STYLE
         UI.MainFrame.__init__(self, *args, **kwds)
 
-# these three commands were moved out of UI.MainFrame's init
+        # these three commands were moved out of UI.MainFrame's init
         self.main_list = ProjectReportList(self.Main_Panel)
         self.Report = self.main_list
-#        self.main_list = ProjectReportList(self)
-#       self.Report = self.main_list
         self.ReportID = reportid
+
         Data.OpenReports[reportid] = self  # used to refresh report
         Data.Report[reportid]['Open'] = True  # needed by close routine
+
+        Menu.GetScriptNames()
+        Menu.doAddScripts(self)
+        Menu.FillWindowMenu(self)
         Menu.AdjustMenus(self)
-        # self. main_list.Reset()  # reset doesn't exist -- I don't remember where I got this line from
+
         self.set_properties()
         self.do_layout()
 
-# ----- Menu and Toolbars
-
-        # Associate each menu/toolbar item with the method that handles that
-        # item.
-        if mac:  # mac only
-            wx.App_SetMacAboutMenuItemId(ID.ABOUT)
-            # wx.App_SetMacPreferencesMenuItemId(),
-            wx.App_SetMacExitMenuItemId(wx.ID_EXIT)
-            # wx.App_SetMacHelpMenuTitleName("&Help")
-            # wx.EVT_MENU(self, wx.ID_ABOUT,    self.doShowAbout)
-            # wx.EVT_MENU(self, wx.ID_PREFERENCES,    self.doNew)
-
-        wx.EVT_MENU(self, wx.ID_NEW,    self.doNew)
-        wx.EVT_MENU(self, wx.ID_OPEN,   self.doOpen)
+        # file menu events
+        wx.EVT_MENU(self, wx.ID_NEW,    Menu.doNew)
+        wx.EVT_MENU(self, wx.ID_OPEN,   Menu.doOpen)
         wx.EVT_MENU(self, wx.ID_CLOSE,  self.doClose)
-        wx.EVT_MENU(self, wx.ID_SAVE,   self.doSave)
-        wx.EVT_MENU(self, wx.ID_SAVEAS, self.doSaveAs)
-#        wx.EVT_MENU(self, wx.ID_REVERT, self.doRevert)
-        wx.EVT_MENU(self, wx.ID_EXIT, self.doExit)
-        if not mac:  # not mac
-            wx.EVT_MENU(self, wx.ID_EXIT,   self.doExit)
+        wx.EVT_MENU(self, wx.ID_CLOSE_ALL, Menu.doCloseReports)
+        wx.EVT_MENU(self, wx.ID_SAVE,   Menu.doSave)
+        wx.EVT_MENU(self, wx.ID_SAVEAS, Menu.doSaveAs)
+#        wx.EVT_MENU(self, wx.ID_REVERT, Menu.doRevert)
+        wx.EVT_MENU(self, wx.ID_EXIT, Menu.doExit)
 
-        wx.EVT_MENU(self, ID.UNDO,          self.doUndo)
-        wx.EVT_MENU(self, ID.REDO,          self.doRedo)
+        # edit menu events
+        wx.EVT_MENU(self, wx.ID_UNDO,          Menu.doUndo)
+        wx.EVT_MENU(self, wx.ID_REDO,          Menu.doRedo)
 
-        wx.EVT_MENU(self, ID.FIND_SCRIPTS, self.doFindScripts)
-        Menu.doAddScripts(self)
-        wx.EVT_MENU_RANGE(self, Menu.FirstScriptID, Menu.FirstScriptID + 1000, self.doScript)
+        # script menu events
+        wx.EVT_MENU(self, ID.FIND_SCRIPTS, Menu.doFindScripts)
+        wx.EVT_MENU_RANGE(self, ID.FIRST_SCRIPT, ID.LAST_SCRIPT, Menu.doScript)
 
-        wx.EVT_MENU(self, ID.ABOUT, self.doShowAbout)
-        wx.EVT_MENU(self, ID.HOME_PAGE, self.doHome)
-        wx.EVT_MENU(self, ID.HELP_PAGE, self.doHelp)
-        wx.EVT_MENU(self, ID.FORUM, self.doForum)
+        # window menu events
+        wx.EVT_MENU_RANGE(self, ID.FIRST_WINDOW, ID.LAST_WINDOW, Menu.doBringWindow)
 
-        # Install our own method to handle closing the window.  This allows us
-        # to ask the user if he/she wants to save before closing the window, as
-        # well as keeping track of which windows are currently open.
+        # help menu events
+        wx.EVT_MENU(self, wx.ID_ABOUT, Menu.doShowAbout)
+        wx.EVT_MENU(self, ID.HOME_PAGE, Menu.doHome)
+        wx.EVT_MENU(self, ID.HELP_PAGE, Menu.doHelp)
+        wx.EVT_MENU(self, ID.FORUM, Menu.doForum)
 
+        # frame events
+        wx.EVT_ACTIVATE(self, self.OnActivate)
         wx.EVT_CLOSE(self, self.doClose)
         wx.EVT_SIZE(self, self.OnSize)
         wx.EVT_MOVE(self, self.OnMove)
@@ -580,61 +570,17 @@ class ProjectReportFrame(UI.MainFrame):
     def OnShowHidden(self, event):
         Menu.onShowHidden(self, event)
 
-    # ---- Menu Command -----
-
-    # File Menu
-    def doNew(self, event):
-        Menu.doNew(self, event)
-
-    def doOpen(self, event):
-        Menu.doOpen(self, event)
+    # ---- menu commands -----
 
     def doClose(self, event):
-        Menu.doExit(self, event)
-        # if Data.ChangedData:
-        #     if not Data.AskIfUserWantsToSave(self, "closing"): return
-        # 
-        # del Data.OpenReports[self.ReportID]
-        # self.Destroy()
+        Menu.doExit(self)
 
-    def doSave(self, event):
-        Menu.doSave(self, event)
+# ---------------- activate
 
-    def doSaveAs(self, event):
-        Menu.doSaveAs(self, event)
-
-    def doExit(self, event):
-        Menu.doExit(self, event)
-        if debug: print "doExit didn't exit"
-        GanttPV.ExitMainLoop()  # just in case the doExit fails
-
-
-    # Edit Menu
-    def doUndo(self, event):
-        Menu.doUndo(self, event)
-
-    def doRedo(self, event):
-        Menu.doRedo(self, event)
-
-    # Script Menu
-    def doFindScripts(self, event):
-        Menu.doFindScripts(self, event)
-
-    def doScript(self, event):
-        Menu.doScript(self, event)
-
-    # Help Menu
-    def doShowAbout(self, event):
-        Menu.doShowAbout(self, event)
-
-    def doHome(self, event):
-        Menu.doHome(self, event)
-
-    def doHelp(self, event):
-        Menu.doHelp(self, event)
-
-    def doForum(self, event):
-        Menu.doForum(self, event)
+    def OnActivate(self, event):
+        if event.GetActive():
+            Data.ActiveReport = self.ReportID
+        event.Skip()
 
 # ----------------- window size/position 
 
@@ -678,8 +624,8 @@ class GanttPVApp(wx.App):
 
         Main = ProjectReportFrame(1, None, -1, "")  # reportid = 1
         # Main = ProjectReportFrame(-1, "")
-	Main.Show(True)
         self.SetTopWindow(Main)
+        Main.Show(True)
 
         self.ParseOptions()
 
@@ -688,50 +634,10 @@ class GanttPVApp(wx.App):
     def ParseOptions(self):
         """ Process any command line options """
         options = sys.argv
-        usageStr = 'usage: ' + options[0] + ' [-script [n] name...] [file...]'
+        usageStr = 'usage: ' + options[0] + ' [file...]'
         i = 1
         while i < len(options):
-            if options[i][0] != '-':
-                Data.OpenFile(options[i])
-            elif re.match('-script', options[i], re.I):
-                if debug: print "process option '-script [n] name...'"
-                i += 1
-                if i >= len(options) or options[i][0] == '-':
-                    print options[0] + ': option requires an argument -- script'
-                    print usageStr
-                    break
-    
-                try:
-                    count = int(options[i])
-                    i += 1
-                except ValueError:
-                    count = 1
-    
-                while count > 0:
-                    if debug: print 'script name:', options[i]
-                    s, ext = os.path.splitext(options[i])
-                    if ext and ext != '.py':
-                        if debug: print "script has extension other than '.py'"
-                        if debug: print "option '-script' cancelled"
-                        break
-
-                    sd = Data.Option.get('ScriptDirectory') or os.path.join(Data.Path, "Scripts")
-                    script = os.path.join(sd, s + '.py')
-                    try:
-                        name_dict = Data.GetModuleNames()
-                        name_dict['self'] = self.GetTopWindow()
-                        name_dict['thisFile'] = script
-                        execfile(script, name_dict)
-                    except IOError:
-                        pass
-                    except Exception:
-                        error_info = sys.exc_info()
-                        sys.excepthook(*error_info)
-
-                    count -= 1
-                    i += 1
-            else:
-                print options[0] + ': illegal option -- ' + options[i][1:]
+            Data.OpenFile(options[i])
             i += 1
 
 # end of class GanttPVApp
@@ -739,8 +645,6 @@ class GanttPVApp(wx.App):
 if debug: print "Test to start main loop"
 
 if __name__ == "__main__":
-    if debug: print "Start main loop ------------------------ "
-
     # ex_name = 'myprogram.exe' 
     # if mac:
     #    ex_name = 'GanttPV.app' 
@@ -763,9 +667,9 @@ if __name__ == "__main__":
     if debug: print "data path:", Data.Path
     Data.LoadOption(Data.Path)
 
-    App = GanttPVApp(0)
-    App.MainLoop()
-
+    if debug: print "Start main loop ------------------------ "
+    Data.App = GanttPVApp(0)
+    Data.App.MainLoop()
     if debug: print "End main loop -------------------------- "
 
 # if __name__ == '__main__':

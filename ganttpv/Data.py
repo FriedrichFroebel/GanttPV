@@ -63,17 +63,17 @@
 # 041012 - moved AddTable, AddRow, and AddReportType here from "Add Earned Value Tracking.py"
 # 041031 - don't automatically add report rows for "deleted" records
 # 041203 - GetColumnHeader and GetCellValue logic moved here from GanttReport
-# 041231 - added xref to find first day of next month; changed GetColumnHead to work for months and quarters
-#		added routine to add months to a date index
+# 041231 - added xref to find first day of next month; changed GetColumnHead to work for months and quarters; added routine to add months to a date index
 # 050101 - added hours units
 # 050104 - added backwards pass and float calculations
 # 050328 - derive parent dates from children
 # 050329 - support multi-value list type columns (for predecessors, successors, children, and resource names)
 # 050402 - handle task w/ self for parent
 # 050407 - Alexander - close deleted reports and prevent them from opening
-# 050409 - Alexander - added GetModuleNames for use in GanttPV.py and Menu.py
-# 050423 - moved GetPeriodInfo logic to calculate period start and hours to Data from GanttReport.py;
-#		added GetColumnDate; save "SubtaskCount" in Task table 
+# 050409 - Alexander - added GetModuleNames
+# 050503 - Alexander - added App, for program quiting; and ActiveReport, for script-running and window-switching
+# 050423 - moved GetPeriodInfo logic to calculate period start and hours to Data from GanttReport.py; added GetColumnDate; save "SubtaskCount" in Task table 
+# 050504 - Alexander - moved script-running logic here; added logic to prevent no-value entries in the database; added logic to update the Window menu.
 
 # import calendar
 import datetime
@@ -97,6 +97,9 @@ def GetModuleNames():
     """
     import Data, GanttPV, GanttReport, ID, Menu, UI, wx
     return locals()
+
+App = 0           # the application itself
+ActiveReport = 1  # ReportID of most recently active frame
 
 # Clients should treat these tables as read only data
 Database = {}           # will contain pointers to all of these tables
@@ -132,6 +135,11 @@ DateIndex = []  # usage: date = DateIndex[1]
 DateInfo = []   # dayhours, cumhours, dow = DateInfo[1]
 DateNextMonth = {} # usage: index = DateNextMonth['2004-01']  # index is first day of next month
 
+# Time units conversion
+WeekToHour = 40
+DayToHour = 8
+AllowHourToDay = True
+
 # save impact of change until it can be addressed
 ChangedCalendar = False  # will affect calendar hours tables (gantt will have to be redone, too)
 ChangedSchedule = False  # gantt calculation must be redone
@@ -140,7 +148,7 @@ ChangedRow = False       # a record was added or deleted, the rows on a report m
 
 UndoStack = []
 RedoStack = []
-OpenReports = {}  # keys are report id's of open reports. Main is always "1"; Resource is always "2"
+OpenReports = {}  # keys are report id's of open reports. Main is always "1"; Report Options is always "2"
 
 # these options are user preferences
 Option = {  'AutoGantt' : True,  # Delay calculation of calendar and schedule changes
@@ -209,7 +217,8 @@ def FillTable(name, t, Columns, Data):
         t[id]['ID'] = id
 
         for c, r in zip( Columns, d ):
-            t[id][c] = r
+            if r or r == 0:
+                t[id][c] = r
     NextID[name] = len(Data) + 1
     Database[name] = t
 
@@ -604,7 +613,7 @@ def AddReportType(reportType, columnTypes):
     # Make sure tables exist that are referenced by ReportType
     tableNames =  map( reportType.get, ["TableA", "TableB"] )
     for name in tableNames:
-	AddTable(name)
+        AddTable(name)
 
     # Either add or update ReportType
     reportTypeName = reportType["Name"]
@@ -813,33 +822,33 @@ def Update(change, push=1):
     tname = change['Table']  # exception if not found
     undo = { 'Table' : tname }
     table = Database[tname]
-    if change.get('ID') != None:  # change existing record
-        if debug: print "Changed existing record"
+    if change.get('ID') != None:
+        if debug: print "Change existing record"
         id = change['ID']
         record = table[id]
         for c, newval in change.iteritems():  # process each new field
             if c == 'Table' or c == 'ID': continue
-            if record.has_key(c):  # change existing value
-                if newval != record[c]: # if value has changed
-                    undo[c] = record[c]  # old value
+            oldval = record.get(c)
+            if newval != oldval:
+                undo[c] = oldval
+                if newval or newval == 0:
                     record[c] = newval
-            else:  # new value
-                undo[c] = None
-                record[c] = newval
-    else:  # add a new record
-        if debug: print "Added new record"
+                else:
+                    del record[c]
+    else:
+        if debug: print "Add new record"
         record = {}
         for c, newval in change.iteritems():  # process each new field
             if c == 'Table': continue
-            undo[c] = None
-            record[c] = newval
+            if newval or newval == 0:
+                record[c] = newval
         id = NextID[tname]
         if debug: print "new id:", id
         NextID[tname] = id + 1
         record['ID'] = id
         table[id] = record
         undo['zzStatus'] = 'deleted'
-        record['zzStatus'] = 'active'  # not really needed if I set new record flag here??????
+        # record['zzStatus'] = 'active'  # not really needed if I set new record flag here??????
     undo['ID'] = id
     # redo['ID'] = id
     # check 'redo' to see what needs to be refreshed in the displays
@@ -873,7 +882,7 @@ def ValidDate(value):
 
 def SetupDateConv():
     """" Setup tables that will be used for all schedule date calculations """
-    global DateConv, DateIndex, DateInfo, DateNextMonth
+    global DateConv, DateIndex, DateInfo, DateNextMonth, WeekToHour, DayToHour
     # global ChangedCalendar
     # --->> don't use 'Update' in this processing <<----
     # dow = calendar.weekday(yyyy,mm,dd)  # monday = 0
@@ -930,7 +939,24 @@ def SetupDateConv():
 
     if debug: print "first & last", d1.strftime("%Y-%m-%d"), d2.strftime("%Y-%m-%d")
 
-    wh = Other.get('WeekHours', (8,8,8,8,8,0,0))
+    wh = Other.get('WeekHours') or (8,8,8,8,8,0,0)
+
+    WeekToHour = 0
+    WeekToDay = 0
+    DayToHour = 0
+    AllowHourToDay = True
+
+    for dayLength in wh:
+        if dayLength > 0:
+            WeekToHour += dayLength
+            WeekToDay += 1
+            if AllowHourToDay:
+                if DayToHour == 0:
+                    DayToHour = dayLength
+                elif DayToHour != dayLength:
+                    AllowHourToDay = False
+    DayToHour = WeekToHour.__truediv__(WeekToDay)
+
     hxref = {}
     for k, v in Holiday.iteritems():
         if v.get('zzStatus', 'active') == 'deleted': continue
@@ -1173,8 +1199,9 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                 for t in suc[k]: precnt[t] -= 1
                 precnt[k] = -1
     vs = precnt.values()
-    if debug: print "forward pass did ", vs.count(-1), " of ", len(vs), ". Probably a dependency loop."
-    if vs.count(-1) != len(vs): return  # didn't finish forward pass, skip backward pass
+    if vs.count(-1) != len(vs):
+        if debug: print "forward pass did ", vs.count(-1), " of ", len(vs), ". Probably a dependency loop."
+        return  # didn't finish forward pass, skip backward pass
 
     # backward pass
     moretodo = True
@@ -1420,19 +1447,21 @@ def GetCellValue(rowid, colid, of):
                         value = ", ".join( [ str(x) for x in vals ] )  # need to check this with unicode
                     else:
                         value = ""
-            if dt == 'u' and isinstance(value, int) and value > 0:    # units
-                a, h = divmod(value, 8)
-                w, d = divmod(a, 5)
-                if w == 1: w = 0; d += 5 
-                if d == 1: d = 0; h += 8
-                value = []
-                if w: value.append(str(w) + 'w')
-                if d: value.append(str(d) + 'd')
-                if h: value.append(str(h) + 'h')
-                if len(value) > 1:
-                    value = ' '.join(value)
+            if dt == 'u' and isinstance(value, int) and value > 0:
+                w, h = divmod(value, WeekToHour)
+                if h > int(WeekToHour): w += 1; h = 0
+
+                if AllowHourToDay:
+                    d, h = divmod(h, DayToHour)
+                    if h > int(DayToHour): d += 1; h = 0
                 else:
-                    value = value[0]
+                    d = 0
+
+                value = []
+                if w: value.append(str(int(w)) + 'w')
+                if d: value.append(str(int(d)) + 'd')
+                if h: value.append(str(int(h)) + 'h')
+                return ' '.join(value)
         else:
             # ---- Here are some examples that this should handle ----
             # -- Report Type => Column Type --
@@ -1673,11 +1702,11 @@ def AdjustReportRows():
         return Database[ta][parentid].get(selcol) == selval
 
     for rk, r in Report.iteritems():  # process all active reports
-        if r.get('zzStatus', 'active') == 'delete': continue
+        if r.get('zzStatus', 'active') == 'deleted': continue
         newrow["ReportID"] = rk  # make sure any new rows know their parent report is
         rtid = r.get('ReportTypeID')
-        if not rtid:  # could happen if report is "undone"
-            if debug: print "AdjustReportRows: invalid ReportTypeID (rk, rtid)", rk, rtid
+        if not rtid or not ReportType.has_key(rtid):
+            if debug: print "invalid ReportType: report", rk, ", type", rtid
             continue
         rt = ReportType[rtid]
         ta, tb = rt.get('TableA'), rt.get('TableB')  # get the names of the tables used
@@ -1816,7 +1845,7 @@ def LoadOption(directory=None):
         header = f.readline()  # header will identify need for conversion of earlier versions or use of different file formats
         Option = cPickle.load(f)
         f.close()
-        Menu.GetScriptNames()  # must be done after option file is loaded
+        Menu.GetScriptNames()
 
 def SaveOption():
     """ Save the Option file.
@@ -1833,37 +1862,39 @@ def SaveOption():
 
 # --------- Project files
 
-def OpenReport(id):  # this should not be called for report #1
-    r = Database['Report'][id]
-    if r.get('zzStatus', 'active') == 'deleted':
+def OpenReport(id):
+    """ Open a report and bring it to the front.  """
+    r = Report.get(id)
+    if not r or r.get('zzStatus') == 'deleted':
         return
-    if not r.get('ReportTypeID'): return  # don't open if not report type id (can happen if "undone")
-    if r.get('Open') and OpenReports.get(id):
-        OpenReports[id].Raise()  # allow attempt to open a report that is already open
-        return
-    type = r.get('Type', 'GanttReport')  # at present Type isn't defined in any report record
-    # if id == 1:  frame = OpenReports[1]
-    if type == 'GanttReport': frame = GanttReport.GanttReportFrame(id, None, -1, "")
-    else: return
-    OpenReports[id] = frame
     r['Open'] = True
-    if r.get('FramePositionX'):
-        frame.SetPosition(wx.Point(r['FramePositionX'], r['FramePositionY']))
-        frame.SetSize(wx.Size(r['FrameSizeW'], r['FrameSizeH']))
-    frame.SetReportTitle()
-    frame.Show(True)
+    if not OpenReports.get(id):
+        frame = GanttReport.GanttReportFrame(id, None, -1, "")
+        if r.get('FramePositionX') and r.get('FramePositionY'):
+            frame.SetPosition(wx.Point(r['FramePositionX'], r['FramePositionY']))
+        if r.get('FrameSizeW') and r.get('FrameSizeH'):
+            frame.SetSize(wx.Size(r['FrameSizeW'], r['FrameSizeH']))
+        OpenReports[id] = frame
+        Menu.UpdateWindowMenuItem(id)
+        OpenReports[id].Show(True)
+    OpenReports[id].Raise()
 
 def CloseReport(id):
-    if Database['Report'][id].get('Open'):
-        v = OpenReports[id]
+    """ Close a report. """
+    if OpenReports.has_key(id):
+        del Report[id]['Open']
+        OpenReports[id].Destroy()
         del OpenReports[id]
-        v.Destroy()
-        del Database['Report'][id]['Open']  # delete is the same as setting it to false, but saves file space
+        Menu.UpdateWindowMenuItem(id)
 
-def CloseReports():  # close all reports except #1
-    klist = OpenReports.keys()
-    for k in klist:
-        if k != 1: CloseReport(k)
+def CloseReports():
+    """ Close all reports except #1. """
+    for id, frame in OpenReports.items():
+        if id == 1: continue
+        frame.Destroy()
+        del Report[id]['Open']
+        del OpenReports[id]
+    Menu.ResetWindowMenus()
 
 def MakeReady():
     """ After an database has been loaded or created, set all other values to match """
@@ -1898,7 +1929,7 @@ def MakeReady():
                 Menu.AdjustMenus(frame)
                 frame.Refresh()
                 frame.Report.Refresh()  # update displayed data (needed for Main on Windows, not needed on Mac)
-        elif Database['Report'][k].get('Open'):  OpenReport(k)
+        if Database['Report'][k].get('Open'):  OpenReport(k)
     UndoStack  = []
     RedoStack = []
     ChangedData = False  # true if database needs to be saved
@@ -1906,18 +1937,22 @@ def MakeReady():
 
 #    RefreshReports()  # needed?? -- not here, this routine is back end
 
-def LoadContents(self):
+def LoadContents():
     """ Load the contents of our document into memory. """
     global Database
+    CloseReports()
+    try:
+        f = open(FileName, "rb")
+        header = f.readline()  # add read line of text - will allow conversion of earlier versions or use of different file formats
+        Database = cPickle.load(f)
+        f.close()
+    except IOError:
+        if debug: print "LoadContents io error"
+    else:
+        MakeReady()
+        return True
 
-    f = open(FileName, "rb")
-    header = f.readline()  # add read line of text - will allow conversion of earlier versions or use of different file formats
-    Database = cPickle.load(f)
-    f.close()
-
-    MakeReady()
-
-def SaveContents(self):
+def SaveContents():
     """ Save the contents of our document to disk. """
     global ChangedData
 
@@ -1929,15 +1964,48 @@ def SaveContents(self):
 
     ChangedData = False
 
-def OpenFile(name):
+def GetScriptDirectory():
+    """ Return the directory to search for script files """
+    return Option.get('ScriptDirectory') or os.path.join(Path, "Scripts")
+
+def OpenFile(path):
+    """ Open a file (any type) """
+    ext = os.path.splitext(path)[1]
+    if ext == '.ganttpv':
+        OpenDatabase(path)
+    elif ext == '.py':
+        RunScript(path)
+    else:
+        if debug: print "unknown file extension:", ext
+
+def OpenDatabase(path):
+    """ Open a database file (.ganttpv) """
     global FileName
-    title = os.path.basename(name)
-    FileName = name
-    LoadContents(None)
+    FileName = path
+    if not LoadContents(): return
+    title = os.path.basename(path)
     OpenReports[1].SetTitle(title)
     OpenReports[1].Show(True)
 
-def AskIfUserWantsToSave(self, action):
+def RunScript(path):
+    """ Run a script file (.py) """
+    if debug: print "begin script:", path
+
+    name_dict = GetModuleNames()
+    name_dict['self'] = OpenReports.get(ActiveReport)
+    name_dict['thisfile'] = path
+    name_dict['debug'] = debug
+
+    try:
+        execfile(path, name_dict)
+    except:
+        import sys
+        error_info = sys.exc_info()
+        sys.excepthook(*error_info)
+
+    if debug: print "end of script:", path
+
+def AskIfUserWantsToSave(action):
     """ Give the user the opportunity to save the current document.
 
     'action' is a string describing the action about to be taken.  If
@@ -1948,7 +2016,7 @@ def AskIfUserWantsToSave(self, action):
     if not ChangedData: return True # Nothing to do.
 
     response = wx.MessageBox("Save changes before " + action + "?",
-                                "Confirm", wx.YES_NO | wx.CANCEL, self)
+                                "Confirm", wx.YES_NO | wx.CANCEL)
 
     if response == wx.YES:
         if FileName == None:
@@ -1960,7 +2028,7 @@ def AskIfUserWantsToSave(self, action):
             if tempFileName == "": return False # User cancelled.
             FileName = tempFileName
 
-        SaveContents(self)
+        SaveContents()
         return True
     elif response == wx.NO:
         return True # User doesn't want changes saved.
