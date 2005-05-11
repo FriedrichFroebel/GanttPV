@@ -69,6 +69,8 @@
 # 050423 - move logic to calculate period start and hours to Data.GetPeriodInfo
 # 050424 - fix ScrollToTask for M & Q
 # 050426 - Alexander - fixed bug where moving columns threw off displayed widths
+# 050503 - make wxPython 2.6.0.0 use same fonts as prior default
+# 050504 - in OnPrerequisite, chain tasks if more than one non-parent task is selected
 # 050504 - Alexander - implemented Window menu; moved some menu event-handling logic to Menu.py
 # 050505 - Alexander - updated time units feature to use the work week
 
@@ -431,6 +433,8 @@ class GanttChartTable(wx.grid.PyGridTableBase):
             hidden = rr.get('Hidden', False)
 
             attr = wx.grid.GridCellAttr()
+            # attr.SetFont(wx.Font(11, wx.DEFAULT, wx.NORMAL, wx.NORMAL))  # return to prior default
+            attr.SetFont(wx.Font(11, wx.SWISS, wx.NORMAL, wx.NORMAL))  # return to prior default
 
             if deleted:
                 attr.SetBackgroundColour(Data.Option.get('DeletedColor', "pale green"))
@@ -628,6 +632,8 @@ class GanttChartGrid(wx.grid.Grid):
         self.DisableDragRowSize()
         self.UpdateColumnWidths()
         self.SetRowLabelSize(40)
+        # self.SetLabelFont(wx.Font(11, wx.DEFAULT, wx.NORMAL, wx.BOLD))  # use size of prior default, font is different
+        self.SetLabelFont(wx.Font(11, wx.SWISS, wx.NORMAL, wx.BOLD))  # use size of prior default
 
         # this has no effect
         self.SetDefaultRowSize(20)  # less than the gantt renderer; (28, True) would mean resize existing rows
@@ -990,9 +996,26 @@ class GanttReportFrame(UI.ReportFrame):
         # list tasks in the same order they appear now  -- use self.Report.table.rows
         # highlight the ones that are currently prerequisites
         sel = self.Report.GetSelectedRows()  # current selection
-        if len(sel) != 1: 
-            if debug: print "only prereq's for one task"
+        if len(sel) < 1: 
+            if debug: print "must select at least one row"
             return  # only move if rows selected
+        elif len(sel) > 1:
+            rows = self.Report.table.rows
+            alltids = [ Data.ReportRow[rows[x]].get('TableID') for x in sel if Data.ReportRow[rows[x]].get('TableName') == 'Task' ]
+            tids = [ x for x in alltids if not Data.Task[x].get('SubtaskCount') ] # should I remove any parent tasks from the list?
+            if len(tids) > 1:
+                for i in range(len(tids) - 1):  # try to match and link each pair
+                    # look for an existing dependency record
+                    did = Data.FindID('Depedency', 'PrerequisiteID', tids[i], 'TaskID', tids[i+1])
+                    if did:
+                        if Data.Database['Dependency'][did].get('zzStatus') == 'deleted':
+                            change = { 'Table': 'Dependency', 'ID': did, 'zzStatus': 'active' }
+                            Data.Update(change)
+                    else:
+                        change = { 'Table': 'Dependency', 'PrerequisiteID': tids[i], 'TaskID': tids[i+1] }
+                        Data.Update(change)
+                Data.SetUndo("Set Dependencies")
+            return
         rows = self.Report.table.rows
         sel = sel[0]
         rowid = rows[sel]  # get selection's task id

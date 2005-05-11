@@ -105,10 +105,9 @@ class ProjectReportList(wx.ListCtrl):
         self.attrreport = wx.ListItemAttr()
         self.attrreport.SetBackgroundColour(other.get('ChildColor', "khaki"))
 
-        wx.EVT_LIST_ITEM_SELECTED(self, self.GetId(), self.OnItemSelected)
         wx.EVT_LIST_ITEM_ACTIVATED(self, self.GetId(), self.OnItemActivated)
         wx.EVT_LIST_ITEM_DESELECTED(self, self.GetId(), self.OnItemDeselected)
-
+        wx.EVT_LIST_ITEM_SELECTED(self, self.GetId(), self.OnItemSelected)
 
     def OnItemSelected(self, event):
         self.currentItem = event.GetIndex()

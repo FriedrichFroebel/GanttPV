@@ -38,6 +38,7 @@
 # 050409 - Alexander - implemented multi-level Scripts menu: AddMenuTree, SearchDir, and LinearTraversal functions; ScriptMenu and ScriptPath arrays.
 # 050503 - Alexander - implemented Window menu for easy window-switching
 # 050504 - Alexander - moved some menu event-handling here from GanttPV.py and GanttReport.py; centered dialogs on screen rather than current report.
+# 050504 - enable assign dependency when selection > 1
 
 import wx, os, webbrowser
 import Data, ID, UI
@@ -187,8 +188,13 @@ def SearchDir(path, maxDepth=0, showExtension=None, hidePrefix=None):
     found = [os.path.basename(path)]
     contents = os.listdir(path)
     for i in contents:
-        if i[:len('zzMeasure')] == 'zzMeasure': continue  # ignore the zzMeasure folder
-        if hidePrefix and i[:len(hidePrefix)] == hidePrefix:
+        # conflict in merge -- guessed these three lines were right -- bcc
+        name = os.path.basename(i)
+        if name[:len('zzMeasure')] == 'zzMeasure': continue # ignore the zzMeasure folder
+        if hidePrefix and name[:len(hidePrefix)] == hidePrefix:
+        # conflict in merging changes -- guessed that these two lines were wrong -- bcc
+        # if i[:len('zzMeasure')] == 'zzMeasure': continue  # ignore the zzMeasure folder
+        # if hidePrefix and i[:len(hidePrefix)] == hidePrefix:
             continue
         fullpath = os.path.join(path, i)
         if maxDepth and os.path.isdir(fullpath):
@@ -581,7 +587,7 @@ def AdjustMenus(self):
         self.report_toolbar.EnableTool(ID.MOVE_UP, isSelRow)
         self.report_toolbar.EnableTool(ID.MOVE_DOWN, isSelRow)
 
-        self.report_toolbar.EnableTool(ID.PREREQUISITE, isTask and len(rsel) == 1)
+        self.report_toolbar.EnableTool(ID.PREREQUISITE, isTask and len(rsel) >= 1)
         self.report_toolbar.EnableTool(ID.ASSIGN_RESOURCE, isTask and len(rsel) == 1)
 
         self.report_toolbar.EnableTool(ID.HIDE_ROW, isSelRow)
