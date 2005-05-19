@@ -39,6 +39,7 @@
 # 050503 - Alexander - implemented Window menu for easy window-switching
 # 050504 - Alexander - moved some menu event-handling here from GanttPV.py and GanttReport.py; centered dialogs on screen rather than current report.
 # 050504 - enable assign dependency when selection > 1
+# 050515 - Alexander - fixed a bug in the Window menu that prevented the application build from starting
 
 import wx, os, webbrowser
 import Data, ID, UI
@@ -152,7 +153,7 @@ ScriptPath = []  # relative pathnames, arranged by script id
 
 def doAddScripts(frame): 
     """ Initialize scripts menu. """
-    if len(ScriptMenu) > 0:
+    if len(ScriptMenu) > 1:
         mb = frame.GetMenuBar()
         menuItem = mb.FindItemById(ID.FIND_SCRIPTS)
         menu = menuItem.GetMenu()
@@ -185,7 +186,13 @@ def SearchDir(path, maxDepth=0, showExtension=None, hidePrefix=None):
     Ignore files and directories whose names begin with hidePrefix.
     List format is [path, [file], [subpath, [file], ...] ...]
     """
+    if not os.path.exists(path):
+        return []
+
     found = [os.path.basename(path)]
+    if not os.path.isdir(path):
+        return found
+
     contents = os.listdir(path)
     for i in contents:
         # conflict in merge -- guessed these three lines were right -- bcc
@@ -256,7 +263,7 @@ def doFindScripts(event):
 
     GetScriptNames()
 
-    if len(ScriptPath) <= 1: 
+    if len(ScriptMenu) <= 1: 
         curDir = os.getcwd()  # remember current directory
         dlg = wx.DirDialog(None, "Choose Script directory",
                                 style = wx.DD_DEFAULT_STYLE|wx.DD_NEW_DIR_BUTTON)
@@ -283,7 +290,7 @@ def doScript(event):
 
 # ------------ Window Menu -----------------
 
-WindowOrder = [(None, None)]  # [(report id, title), ...]
+WindowOrder = [(1, None)]  # [(report id, title), ...]
 
 def SearchWindowOrder(reportid):
     index = 1

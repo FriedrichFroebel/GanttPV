@@ -48,6 +48,7 @@
 # 050409 - Alexander - added command-line support for opening .ganttpv files and .py scripts.
 # 050503 - Alexander - moved script-running logic to Data.py
 # 050504 - Alexander - implemented Window menu; moved some menu event-handling logic to Menu.py
+# 050515 - Alexander - added MacOpenFile
 
 import wx
 import wx.grid
@@ -256,7 +257,6 @@ class ProjectReportFrame(UI.MainFrame):
         if debug: print 'reportid', reportid
         if debug: print 'args', args
         if debug: print 'kwds', kwds
-        kwds["style"] = wx.DEFAULT_FRAME_STYLE
         UI.MainFrame.__init__(self, *args, **kwds)
 
         # these three commands were moved out of UI.MainFrame's init
@@ -638,6 +638,10 @@ class GanttPVApp(wx.App):
         while i < len(options):
             Data.OpenFile(options[i])
             i += 1
+
+    def MacOpenFile(self, path):
+        """ Open a file for Mac OS. """
+        Data.OpenFile(path)
 
 # end of class GanttPVApp
 

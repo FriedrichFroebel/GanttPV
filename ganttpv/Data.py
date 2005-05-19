@@ -57,7 +57,7 @@
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
 # 040815 - FileName not set to None on New (because not on globals list)
 # 040906 - add "project name / report name" to report titles
-# 040928 - Alexander - when making DateConv, ignores incorrectly formatted dates; afterward, ignores dates not present in DateConv
+# 040928 - Alexander - when making DateConv, ignore incorrectly formatted dates; in other places, ignore dates not in DateConv
 # 041001 - added FindID and FindIDs
 # 041009 - tightened edits on FirstDate and LastDate; added ValidDate() routine
 # 041012 - moved AddTable, AddRow, and AddReportType here from "Add Earned Value Tracking.py"
@@ -74,6 +74,7 @@
 # 050503 - Alexander - added App, for program quiting; and ActiveReport, for script-running and window-switching
 # 050423 - moved GetPeriodInfo logic to calculate period start and hours to Data from GanttReport.py; added GetColumnDate; save "SubtaskCount" in Task table 
 # 050504 - Alexander - moved script-running logic here; added logic to prevent no-value entries in the database; added logic to update the Window menu.
+# 050513 - Alexander - revised some dictionary fetches to ignore invalid keys (instead of raising an exception); tightened _Do logic;
 
 # import calendar
 import datetime
@@ -126,8 +127,8 @@ def CreateEmptyTables():
     Other = {}
     NextID = {}
 
-Successor = { }  # dependency xref (used?)
-Predecessor = { }
+# Successor = { }  # dependency xref (used?)
+# Predecessor = { }
 
 # Date conversion tables
 DateConv = {}   # usage: index = DateConv['2004-01-01']
@@ -581,10 +582,11 @@ def AddTable(name):
         Database['NextID'][name] = 1
 
 def AddRow(change):  # add or update row
-    changeTable = change["Table"]
-    changeName = change["Name"]
+    changeTable = Database.get(change.get("Table"))
+    changeName = change.get("Name")
+    if not changeTable or not changeName: return
     cid = 0
-    for k, v in Database[changeTable].items():
+    for k, v in changeTable.items():
         if v.get('Name') == changeName:
             cid = k
             break
@@ -593,8 +595,7 @@ def AddRow(change):  # add or update row
     Update(change)
 
 def AddReportType(reportType, columnTypes):
-
-    # should edit to make sure all values are valid
+    # should add code to ensure all values are valid
 
     # convert "Also" name to record id
     also = reportType.get("Also")
@@ -676,16 +677,16 @@ def FindIDs(table, field1, value1, field2, value2):
     return result
 
 # --------------------- ( is this used for anything? )
-def SetDependencyXref():
-    for i, d in Dependency.iteritems():
-        p = d['PrerequisiteID']
-        s = d['TaskID']
-        if not Predecessor.has_key(s):
-            Predecessor[s] = []
-        if not Successor.has_key(p):
-            Successor[p] = []
-        Predecessor[s].append(p)
-        Successor[p].append(s)
+# def SetDependencyXref():
+#     for i, d in Dependency.iteritems():
+#         p = d['PrerequisiteID']
+#         s = d['TaskID']
+#         if not Predecessor.has_key(s):
+#             Predecessor[s] = []
+#         if not Successor.has_key(p):
+#             Successor[p] = []
+#         Predecessor[s].append(p)
+#         Successor[p].append(s)
 
 # ----------------------
 
@@ -695,9 +696,14 @@ def CheckChange(change):  # change contains the undo info for the changes (only 
     global ChangedCalendar, ChangedSchedule, ChangedReport, ChangedRow
     if debug: print "Start CheckChange"
     if debug: print 'change', change
+    if not change.has_key('Table'):
+        if debug: print "change does not specify table"
+        return  
+
     if change.has_key('zzStatus') and not change['Table'] in ('ReportRow', 'ReportColumn'): ChangedRow = True  # something has been added or deleted
-        # Don't really need 'zzStatus' for new record adds if I set the new record add flag in Update???
-        # zzStatus on all new records just take up space.
+        # 'zzStatus' is not set for new record; ChangedRow flag is set in Update when adding a record
+        # zzStatus on all new records just takes up space.
+
     if change['Table'] == 'OtherData':  # check for change in hours per day
         # for k in ('WeekHours'):  # which of these to use?
         for k in ('WeekHours',):
@@ -745,20 +751,16 @@ def RefreshReports():
         v.Report.Refresh()  # update displayed data (needed for Main on Windows, not needed on Mac)
     if debug: print "End RefreshReports"
 
-# set up undo
-def SetUndo(message):
-    """ This is the last step in submitting a group of changes to the database. 
-            It tells the system to adjust any system calculations and to update the displays. """
-    global ChangedCalendar, ChangedSchedule, ChangedReport, ChangedRow, ChangedData
-    global UndoStack, RedoStack  # is this needed for the UndoStack??
+# ----- undo and redo
 
-    if debug: print "Start SetUndo"
-    if debug: print "message", message
-    # these routines may add more information to the undo stack
-    UpdateCalendar = ChangedCalendar and Option.get('AutoGantt')
-    UpdateGantt = (ChangedCalendar or ChangedSchedule) and Option.get('AutoGantt')
+def Recalculate(autogantt=True):
+    global ChangedCalendar, ChangedSchedule, ChangedRow, ChangedReport
+
+    UpdateCalendar = ChangedCalendar and autogantt
+    UpdateGantt = (ChangedCalendar or ChangedSchedule) and autogantt
     UpdateReports = UpdateCalendar or UpdateGantt or ChangedReport or ChangedRow
 
+    # these routines shouldn't add anything to the undo stack
     if UpdateCalendar:
         SetupDateConv(); ChangedCalendar = False
     if UpdateGantt:
@@ -770,36 +772,28 @@ def SetUndo(message):
         for k, v in OpenReports.items():  # an invalid report may be closed in this loop
             if v == None: continue
             v.UpdatePointers()
+    RefreshReports()  # adjust visibility/appearance of user interface objects
+
+def SetUndo(message):
+    """ This is the last step in submitting a group of changes to the database. 
+            It tells the system to adjust any system calculations and to update the displays. """
+    global ChangedData, UndoStack, RedoStack
+    if debug: print "Start SetUndo"
+    if debug: print "message", message
+
     UndoStack.append(message)
     ChangedData = True  # file needs to be saved
     RedoStack = []  # clear out the redo stack
-    # adjust visibility/appearance of user interface objects
-    # refresh all reports??
-    RefreshReports()
+    autogantt = Option.get('AutoGantt')
+    Recalculate(autogantt)
+
     if debug: print "End SetUndo"
-
-# ----- undo and redo
-
-def Recalculate():
-    global ChangedCalendar, ChangedSchedule, ChangedRow, ChangedReport
-
-    # these routines shouldn't add anything to the undo stack
-    UpdateReports = ChangedCalendar or ChangedSchedule or ChangedReport or ChangedRow
-    if ChangedCalendar: SetupDateConv()
-    if ChangedSchedule or ChangedCalendar: GanttCalculation(); ChangedSchedule = False; ChangedCalendar = False
-    if ChangedRow: AdjustReportRows(); ChangedRow = False  # needed? I think so
-    if UpdateReports:
-        ChangedReport = False
-        for k, v in OpenReports.items():  # an invalid report may be closed in this process
-            if v == None: continue
-            v.UpdatePointers()
-    RefreshReports()
 
 def _Do(fromstack, tostack):
     global ChangedData
-    if len(fromstack) > 1:
+    if fromstack and isinstance(fromstack[-1], string):
         savemessage = fromstack.pop()
-        while len(fromstack) > 0 and isinstance(fromstack[-1], dict):
+        while fromstack and isinstance(fromstack[-1], dict):
             change = fromstack.pop()
             redo = Update(change, 0)  # '0' means don't put change into Undo Stack
             tostack.append(redo)
@@ -817,14 +811,23 @@ def DoRedo():
 
 # update routine
 def Update(change, push=1):
+    global ChangedRow
     if debug: print 'Start Update'
     if debug: print 'change', change
-    tname = change['Table']  # exception if not found
-    undo = { 'Table' : tname }
-    table = Database[tname]
-    if change.get('ID') != None:
+    tname = change.get('Table')
+    if not tname:
+        if debug: print 'change does not specify table'
+        raise KeyError
+
+    table = Database.get(tname)
+    if table == None:
+        if debug: print 'change specifies invalid table:', tname
+        raise KeyError
+
+    undo = {'Table': tname}
+    if change.has_key('ID'):
         if debug: print "Change existing record"
-        id = change['ID']
+        id = undo['ID'] = change['ID']
         record = table[id]
         for c, newval in change.iteritems():  # process each new field
             if c == 'Table' or c == 'ID': continue
@@ -835,24 +838,23 @@ def Update(change, push=1):
                     record[c] = newval
                 else:
                     del record[c]
+        CheckChange(undo)
     else:
         if debug: print "Add new record"
         record = {}
         for c, newval in change.iteritems():  # process each new field
-            if c == 'Table': continue
             if newval or newval == 0:
                 record[c] = newval
+        undo['zzStatus'] = 'deleted'
+        # record['zzStatus'] = 'active'  # not needed; a record without a zzStatus is assumed to be active
         id = NextID[tname]
         if debug: print "new id:", id
         NextID[tname] = id + 1
-        record['ID'] = id
+        record['ID'] = undo['ID'] = id
+        CheckChange(record)
+        ChangedRow = True  # CheckChange doesn't recognize this for new records
+        del record['Table']  # save space in the database
         table[id] = record
-        undo['zzStatus'] = 'deleted'
-        # record['zzStatus'] = 'active'  # not really needed if I set new record flag here??????
-    undo['ID'] = id
-    # redo['ID'] = id
-    # check 'redo' to see what needs to be refreshed in the displays
-    CheckChange(undo)
     if push: UndoStack.append(undo)
     if debug: print "End Update"
     return undo
@@ -1080,8 +1082,8 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
     parent = {}  # children indexed by parent id
     for k, v in Task.iteritems():  # init dependency counts, xrefs, and start dates
         if v.get('zzStatus', 'active') == 'deleted': continue
-        pid = v['ProjectID']
-        if not pid: continue  # silently ignore tasks w/o projects
+        pid = v.get('ProjectID')
+        if not pid or not Project.has_key(pid): continue  # silently ignore tasks w/o projects
 
         precnt[k] = 0
         succnt[k] = 0
@@ -1728,10 +1730,10 @@ def AdjustReportRows():
             rowk = r.get('FirstRow', 0)
             saverowk = 0  # this will stay 0 if no report rows
 #            while rowk != 0:    # testing change 040717
-            while rowk:
+            while rowk and ReportRow.has_key(rowk):
                 saverowk = rowk
                 rr = ReportRow[rowk]
-                t = rr['TableName']; id = rr['TableID']
+                t = rr.get('TableName'); id = rr.get('TableID')
                 if t == ta:
                     try:
                         shoulda.remove(id)  # remove from list all that have rows
@@ -1796,10 +1798,10 @@ def AdjustReportRows():
             loopguard = 0
             saverowk = 0  # this will stay 0 if no report rows
 #            while rowk != 0:  # ditto debug change 040717
-            while rowk:
+            while rowk and ReportRow.has_key(rowk):
                 saverowk = rowk
                 rr = ReportRow[rowk]
-                id = rr['TableID']
+                id = rr.get('TableID')
                 try:
                     shoulda.remove(id)  # remove from list all that have rows
                 except ValueError:  # occurs if something already in the list shouldn't be there
@@ -1869,12 +1871,17 @@ def OpenReport(id):
         return
     r['Open'] = True
     if not OpenReports.get(id):
-        frame = GanttReport.GanttReportFrame(id, None, -1, "")
-        if r.get('FramePositionX') and r.get('FramePositionY'):
-            frame.SetPosition(wx.Point(r['FramePositionX'], r['FramePositionY']))
-        if r.get('FrameSizeW') and r.get('FrameSizeH'):
-            frame.SetSize(wx.Size(r['FrameSizeW'], r['FrameSizeH']))
-        OpenReports[id] = frame
+        pos = (r.get('FramePositionX') or -1, r.get('FramePositionY') or -1)
+        size = (r.get('FrameSizeW') or 768, r.get('FrameSizeH') or 311)
+        OpenReports[id] = GanttReport.GanttReportFrame(id, None, -1, "", pos, size)
+
+#         frame = GanttReport.GanttReportFrame(id, None, -1, "")
+#         if r.get('FramePositionX') and r.get('FramePositionY'):
+#             frame.SetPosition(wx.Point(r['FramePositionX'], r['FramePositionY']))
+#         if r.get('FrameSizeW') and r.get('FrameSizeH'):
+#             frame.SetSize(wx.Size(r['FrameSizeW'], r['FrameSizeH']))
+#         OpenReports[id] = frame
+
         Menu.UpdateWindowMenuItem(id)
         OpenReports[id].Show(True)
     OpenReports[id].Raise()
@@ -1891,8 +1898,8 @@ def CloseReports():
     """ Close all reports except #1. """
     for id, frame in OpenReports.items():
         if id == 1: continue
-        frame.Destroy()
         del Report[id]['Open']
+        frame.Destroy()
         del OpenReports[id]
     Menu.ResetWindowMenus()
 

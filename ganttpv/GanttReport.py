@@ -73,6 +73,8 @@
 # 050504 - in OnPrerequisite, chain tasks if more than one non-parent task is selected
 # 050504 - Alexander - implemented Window menu; moved some menu event-handling logic to Menu.py
 # 050505 - Alexander - updated time units feature to use the work week
+# 050513 - Alexander - replaced UpdateColumnWidths with new UpdateColumns; this fixes the bug where moving columns threw off cell renderers and read-only status
+# 050517 - Alexander - fixed bug where row size was not properly adjusted for the presence of a gantt column 
 
 import wx, wx.grid
 import datetime
@@ -91,7 +93,6 @@ if debug: print "load GanttReport.py"
 
 class GanttChartTable(wx.grid.PyGridTableBase):
     """ A custom wxGrid Table using user supplied data """
-
     def __init__(self, reportid):
         """ data is taken from SampleData """
         # The base class must be initialized *first*
@@ -295,18 +296,8 @@ class GanttChartTable(wx.grid.PyGridTableBase):
         Call this to update the grid if rows and columns have been added or deleted.
         """
         grid.BeginBatch()
-        for current, new, delmsg, addmsg in [
-            (self._rows, self.GetNumberRows(), wx.grid.GRIDTABLE_NOTIFY_ROWS_DELETED, wx.grid.GRIDTABLE_NOTIFY_ROWS_APPENDED),
-            (self._cols, self.GetNumberCols(), wx.grid.GRIDTABLE_NOTIFY_COLS_DELETED, wx.grid.GRIDTABLE_NOTIFY_COLS_APPENDED),
-        ]:
-            if new < current:
-                msg = wx.grid.GridTableMessage(self,delmsg,new,current-new)
-                grid.ProcessTableMessage(msg)
-            elif new > current:
-                msg = wx.grid.GridTableMessage(self,addmsg,new-current)
-                grid.ProcessTableMessage(msg)
-                self.UpdateValues(grid)
-        grid.EndBatch()
+
+        for current, new, delmsg, addmsg in [            (self._rows, self.GetNumberRows(), wx.grid.GRIDTABLE_NOTIFY_ROWS_DELETED, wx.grid.GRIDTABLE_NOTIFY_ROWS_APPENDED),            (self._cols, self.GetNumberCols(), wx.grid.GRIDTABLE_NOTIFY_COLS_DELETED, wx.grid.GRIDTABLE_NOTIFY_COLS_APPENDED),        ]:            if new < current:                msg = wx.grid.GridTableMessage(self,delmsg,new,current-new)                grid.ProcessTableMessage(msg)            elif new > current:                msg = wx.grid.GridTableMessage(self,addmsg,new-current)                grid.ProcessTableMessage(msg)                self.UpdateValues(grid)
 
         self._rows = self.GetNumberRows()
         self._cols = self.GetNumberCols()
@@ -317,8 +308,8 @@ class GanttChartTable(wx.grid.PyGridTableBase):
 
         # update the scrollbars and the displayed part of the grid
         grid.AdjustScrollbars()
-        grid.ForceRefresh()
 
+        grid.EndBatch()
 
     def UpdateValues(self, grid):
         """Update all displayed values"""
@@ -389,7 +380,7 @@ class GanttChartTable(wx.grid.PyGridTableBase):
 
         Otherwise default to the default renderer.
         """
-
+        rsize = 22
         for col in range(len(self.columns)):
             attr = wx.grid.GridCellAttr()
             of = self.coloffset[col]
@@ -398,24 +389,22 @@ class GanttChartTable(wx.grid.PyGridTableBase):
             # if ctfield != "Gantt": return
             if of > -1 and ctname and ctname[-6:] == "/Gantt":
                 renderer = GanttCellRenderer(self)
-                if renderer.colSize:
-                    grid.SetColSize(col, renderer.colSize)
-                if renderer.rowSize:
-                    grid.SetDefaultRowSize(renderer.rowSize)
+                grid.SetColSize(col, renderer.colSize)
+                rsize = renderer.rowSize
                 attr.SetReadOnly(True)
                 attr.SetRenderer(renderer)
             else:
                 # if debug: print "updateColAttrs ctname", ctname
-                # add logic here to protect columns
                 cid = self.columns[col]
                 rc = Data.ReportColumn[cid]
                 ctid = rc['ColumnTypeID']
-                grid.SetColSize(col, rc.get('Width') or 40)
-                grid.SetDefaultRowSize(22)      # make this big enough so text is fully displayed while editted
-                attr.SetReadOnly(not Data.ColumnType[ctid].get('Edit'))
-                # attr.SetRenderer(None)
+                csize = rc.get('Width') or grid.GetDefaultColSize()
+                grid.SetColSize(col, csize)
+                readonly = not Data.ColumnType[ctid].get('Edit')
+                attr.SetReadOnly(readonly)
             grid.SetColAttr(col, attr)
-            col += 1
+        if rsize != grid.GetDefaultRowSize():
+            grid.SetDefaultRowSize(rsize, True)
 
     def _updateRowAttrs(self, grid):
         """ Highlight parent rows if two type of rows are show """
@@ -468,8 +457,9 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
         #                  images.get_10s_Bitmap,
         #                  images.get_01c_Bitmap]
         # self.colSize = None
-        self.colSize = 24
         # self.rowSize = None
+
+        self.colSize = 24
         self.rowSize = 28
 
     def Draw(self, grid, attr, dc, rect, row, col, isSelected):
@@ -629,23 +619,25 @@ class GanttChartGrid(wx.grid.Grid):
 
         self.table = GanttChartTable(reportid)
         self.SetTable(self.table)
-        self.DisableDragRowSize()
-        self.UpdateColumnWidths()
-        self.SetRowLabelSize(40)
-        # self.SetLabelFont(wx.Font(11, wx.DEFAULT, wx.NORMAL, wx.BOLD))  # use size of prior default, font is different
-        self.SetLabelFont(wx.Font(11, wx.SWISS, wx.NORMAL, wx.BOLD))  # use size of prior default
 
-        # this has no effect
-        self.SetDefaultRowSize(20)  # less than the gantt renderer; (28, True) would mean resize existing rows
+        self.DisableDragRowSize()
+        self.SetRowLabelSize(40)
+        self.SetDefaultRowSize(22)  # (22, True) would resize existing rows
+        self.SetDefaultColSize(40)  # (40, True) would resize existing columns
+
+        self.SetLabelFont(wx.Font(11, wx.SWISS, wx.NORMAL, wx.BOLD))
 
         wx.grid.EVT_GRID_RANGE_SELECT(self, self.OnSelect)
         wx.grid.EVT_GRID_SELECT_CELL(self, self.OnSelect)
 
+        self.Reset()
+
     def OnSelect(self, event):
         # if debug: print "OnSelect"
         reportid = self.table.report['ID']
-        f = Data.OpenReports[reportid]
-        Menu.AdjustMenus(f)
+        f = Data.OpenReports.get(reportid)
+        if f:
+            Menu.AdjustMenus(f)
         event.Skip()
 
      # def __set_properties(self):
@@ -654,20 +646,24 @@ class GanttChartGrid(wx.grid.Grid):
      #     self.grid_1.EnableDragColSize(0)
      #     self.grid_1.EnableDragRowSize(0)
 
-     # def UpdateColumnWidths(self):
-     #    self.table.UpdateColumnWidths():
+    def UpdateColumns(self):
+         self.table._updateColAttrs(self)
 
-    def UpdateColumnWidths(self):
-        rc = Data.ReportColumn
-        for i, c in enumerate(self.table.columns):
-            of = self.table.coloffset[i]
-            ct = Data.ColumnType[self.table.ctypes[i]]
-            ctname = ct.get('Name')
-            if of > -1 and ctname and ctname[-6:] == "/Gantt":
-                self.SetColSize(i, 24)
-            else:
-                cw = rc[c].get('Width') or 40
-                self.SetColSize(i, cw)
+# UpdateColumnWidths is no good -- if the column pointers have changed, then the
+# column attributes must be updated, to preserve read-only status and cell renderers.
+#    -- Alex
+
+#     def UpdateColumnWidths(self):
+#         rc = Data.ReportColumn
+#         for i, c in enumerate(self.table.columns):
+#             of = self.table.coloffset[i]
+#             ct = Data.ColumnType[self.table.ctypes[i]]
+#             ctname = ct.get('Name')
+#             if of > -1 and ctname and ctname[-6:] == "/Gantt":
+#                 self.SetColSize(i, 24)
+#             else:
+#                 cw = rc[c].get('Width') or 40
+#                 self.SetColSize(i, cw)
         
     def Reset(self):
         """ Reset the view based on the data in the table.
@@ -753,14 +749,17 @@ class GanttReportFrame(UI.ReportFrame):
         if debug: print 'args', args
         if debug: print 'kwds', kwds
         # begin wxGlade: ReportFrame.__init__
-        kwds["style"] = wx.DEFAULT_FRAME_STYLE
         UI.ReportFrame.__init__(self, *args, **kwds)
 
         # these three commands were moved out of UI.ReportFrame's init
         self.report_window = GanttChartGrid(self.Report_Panel, reportid)
-        self.report_window.Reset()
         self.Report = self.report_window
         self.ReportID = reportid
+
+        # self.Report, aka report_window, is a grid, not a report or a frame
+        # report_window is referenced in one place in UI.ReportFrame.do_layout
+        # Report is referenced in several scripts
+        #     -- Alexander
 
         # Data.OpenReports[reportid] = self
 
@@ -1028,7 +1027,7 @@ class GanttReportFrame(UI.ReportFrame):
         tid = [ x for x in alltid if Data.Task[x].get('zzStatus', 'active') == 'active' and x != sid]  # active displayed tasks
         tname = [ Data.Task[x].get('Name', "") or "--" for x in tid ]
 
-        status = [ 0 for x in range(len(tid)) ]  # array of 0's
+        status = [0] * len(tid)  # array of 0's
         for k, v in Data.Dependency.iteritems():
             if sid != v.get('TaskID'): continue
             p = v.get('PrerequisiteID')
@@ -1480,7 +1479,7 @@ class GanttReportFrame(UI.ReportFrame):
         if rlen != len(sr.rows) or clen != len(sr.columns):
             self.Report.Reset()  # tell grid that the number of rows or columns has changed
         else:
-            self.report_window.UpdateColumnWidths()
+            self.Report.UpdateColumns()
         if debug: print "End Update Gantt Report Pointers"
 
 #---------------------------------------------------------------------------

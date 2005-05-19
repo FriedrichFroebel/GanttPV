@@ -22,6 +22,9 @@
 # 050409 - Alexander - revised MultipleSelection, added resize border.
 # 050426 - Alexander - assigned a keyboard shortcut to Redo item.
 # 050504 - Alexander - added Window menu; added "Close Reports" to File menu; assigned keyboard shortcuts to "Save As" and "Close Reports"
+# 050515 - Alexander - changed some filenames to use my latest icons
+# 050518 - Alexander - fixed a serious scrollbar bug by commenting out SetSizeHints calls
+# 050518 - Alexander - changed ReportFrame to use the size given in its __init__ arguments
 
 import wx, ID, Menu
 
@@ -69,11 +72,11 @@ class MainFrame(wx.Frame):
         self.main_toolbar = wx.ToolBar(self, -1)
         self.SetToolBar(self.main_toolbar)
         self.main_toolbar.AddLabelTool(ID.NEW_PROJECT, "New Project", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/New Project.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "New Project", "Create a new project record")
-        self.main_toolbar.AddLabelTool(ID.NEW_REPORT, "New Report", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Insert Report.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "New Report", "Create a new report for selected project")
+        self.main_toolbar.AddLabelTool(ID.NEW_REPORT, "Insert Report", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Insert Report.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Insert Report", "Create a new report for selected project")
         self.main_toolbar.AddLabelTool(ID.DUPLICATE, "Duplicate", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Duplicate.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Duplicate", "Duplicate selected project or report")
         self.main_toolbar.AddSeparator()
         self.main_toolbar.AddLabelTool(ID.DELETE, "Delete", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Delete.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Delete", "Delete selected project or report")
-        self.main_toolbar.AddLabelTool(ID.SHOW_HIDDEN_REPORT, "Show Hidden", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Show Hidden.bmp", wx.BITMAP_TYPE_ANY), Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Hide Hidden.bmp", wx.BITMAP_TYPE_ANY), wx.ITEM_CHECK, "Show Hidden", "Hide/show hidden and deleted records")
+        self.main_toolbar.AddLabelTool(ID.SHOW_HIDDEN_REPORT, "Show Hidden", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Show Hidden.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_CHECK, "Show Hidden", "Hide/show hidden and deleted records")
         # Tool Bar end
 #        self.main_list = wx.ListCtrl(self.Main_Panel, -1, style=wx.LC_REPORT|wx.LC_SINGLE_SEL|wx.SUNKEN_BORDER)
 
@@ -107,7 +110,7 @@ class MainFrame(wx.Frame):
         self.Main_Panel.SetAutoLayout(1)
         self.Main_Panel.SetSizer(sizer_29)
         sizer_29.Fit(self.Main_Panel)
-        sizer_29.SetSizeHints(self.Main_Panel)
+        # sizer_29.SetSizeHints(self.Main_Panel)
         sizer_28.Add(self.Main_Panel, 1, wx.EXPAND, 0)
         self.SetAutoLayout(1)
         self.SetSizer(sizer_28)
@@ -166,11 +169,11 @@ class ReportFrame(wx.Frame):
         self.report_toolbar.AddLabelTool(ID.MOVE_UP, "Move Up", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Move Up.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Move Row Up", "Move selected rows up")
         self.report_toolbar.AddLabelTool(ID.MOVE_DOWN, "Move Down", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Move Down.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Move Row Down", "Move selected rows down")
         self.report_toolbar.AddSeparator()
-        self.report_toolbar.AddLabelTool(ID.PREREQUISITE, "Assign Prerequisite", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Dependencies.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Assign Prerequisite", "Identify prerequisites for selected task")
-        self.report_toolbar.AddLabelTool(ID.ASSIGN_RESOURCE, "Assign Resource", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Assign Resources.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Assign Resource", "Assign resources to selected task")
+        self.report_toolbar.AddLabelTool(ID.PREREQUISITE, "Assign Prerequisites", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Assign Prerequisites.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Assign Prerequisites", "Identify prerequisites for selected task")
+        self.report_toolbar.AddLabelTool(ID.ASSIGN_RESOURCE, "Assign Resources", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Assign Resources.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Assign Resources", "Assign resources to selected task")
         self.report_toolbar.AddSeparator()
         self.report_toolbar.AddLabelTool(ID.HIDE_ROW, "Hide Row", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Hide Report.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Hide Row", "Hide/show selected rows")
-        self.report_toolbar.AddLabelTool(ID.SHOW_HIDDEN, "Show Hidden", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Show Hidden.bmp", wx.BITMAP_TYPE_ANY), Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Hide Hidden.bmp", wx.BITMAP_TYPE_ANY), wx.ITEM_CHECK, "Show Hidden", "Show or reveal hidden and deleted rows")
+        self.report_toolbar.AddLabelTool(ID.SHOW_HIDDEN, "Show Hidden", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Show Hidden.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_CHECK, "Show Hidden", "Show or reveal hidden and deleted rows")
         self.report_toolbar.AddSeparator()
         self.report_toolbar.AddLabelTool(ID.INSERT_COLUMN, "Insert Column", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Insert Column.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Insert Column", "Insert column types from popup list")
         self.report_toolbar.AddLabelTool(ID.DELETE_COLUMN, "Delete Column", Menu.Bitmap("/Users/bcc/Desktop/PM/App/icons/Delete Column.bmp", wx.BITMAP_TYPE_ANY), wx.NullBitmap, wx.ITEM_NORMAL, "Delete Column", "Delete selected columns")
@@ -193,8 +196,8 @@ class ReportFrame(wx.Frame):
 
     def set_properties(self):
         # begin wxGlade: ReportFrame.__set_properties
-        self.SetTitle("Report")
-        self.SetSize((768, 311))
+#        self.SetTitle("Report")
+#        self.SetSize((768, 311))
         # self.Enable(0)
         self.report_statusbar.SetStatusWidths([-1])
         # statusbar fields
@@ -218,7 +221,7 @@ class ReportFrame(wx.Frame):
         self.Report_Panel.SetAutoLayout(1)
         self.Report_Panel.SetSizer(sizer_129)
         sizer_129.Fit(self.Report_Panel)
-        sizer_129.SetSizeHints(self.Report_Panel)
+        # sizer_129.SetSizeHints(self.Report_Panel)
         sizer_128.Add(self.Report_Panel, 1, wx.EXPAND, 0)
         self.SetAutoLayout(1)
         self.SetSizer(sizer_128)
