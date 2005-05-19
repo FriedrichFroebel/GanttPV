@@ -75,6 +75,7 @@
 # 050423 - moved GetPeriodInfo logic to calculate period start and hours to Data from GanttReport.py; added GetColumnDate; save "SubtaskCount" in Task table 
 # 050504 - Alexander - moved script-running logic here; added logic to prevent no-value entries in the database; added logic to update the Window menu.
 # 050513 - Alexander - revised some dictionary fetches to ignore invalid keys (instead of raising an exception); tightened _Do logic;
+# 050519 - Brian - use TaskID instead of ParentTaskID to designate Task parent.
 
 # import calendar
 import datetime
@@ -726,7 +727,7 @@ def CheckChange(change):  # change contains the undo info for the changes (only 
 
     elif ChangedSchedule: pass  # 
     elif change['Table'] == 'Task':
-        for k in ('StartDate', 'DurationHours', 'zzStatus', 'ProjectID', 'ParentTaskID'):
+        for k in ('StartDate', 'DurationHours', 'zzStatus', 'ProjectID', 'TaskID'):
             if change.has_key(k): ChangedSchedule = True; break
     elif change['Table'] == 'Dependency':  # allows dependencies that refer to different projects
         for k in ('PrerequisiteID', 'TaskID', 'zzStatus'):
@@ -1096,7 +1097,7 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
         if tsd and tsd < ps[pid]: ps[pid] = tsd  # adjust project start date if task starts are earlier
 
         # if debug: print "task data", k, v
-        p = v.get('ParentTaskID')
+        p = v.get('TaskID')  # parent task id
         if p and p != k and Task.has_key(p):  # ignore parent pointer if it points to self
             if parent.has_key(p):
                 parent[p] += 1  # count the number of children
@@ -1251,7 +1252,7 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
             Task[k]['SubtaskCount'] = parent[k]  # save count of child tasks
             continue  # skip parent tasks
         if Task[k].has_key('SubtaskCount'): del Task[k]['SubtaskCount']  # do I need to test first?
-        p = v.get('ParentTaskID')
+        p = v.get('TaskID')  # parent task id
         if not p or k == p: continue  # ignore all tasks w/o parents (or w/ self for parent)
         # if debug: print "adjust parents of ", k, v
         # update database -- doesn't use Update, but may in the future
@@ -1272,7 +1273,7 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
 
             # if debug: print "adjusted parent ", p, Task[p]
 
-            p = Task[p].get('ParentTaskID')
+            p = Task[p].get('TaskID')  # parent task id
                                        
 # end of GanttCalculation
 # -----------------
@@ -1433,7 +1434,8 @@ def GetCellValue(rowid, colid, of):
             #    Table2 -> Column2
             # 'Prerequisites': ID/Dependency/TaskID/PrerequisiteID
             # 'Successors': ID/Dependency/PrerequisiteID/TaskID
-            # 'ChildTasks': ID/Task/ParentTaskID/ID
+            # 'ChildTasks': ID/Task/TaskID/ID  (TaskID == parent's id)
+            # 'ResourceNames': ID/Assignment/TaskID/ResourceID/Resource/Name
                 try:
                     listcol, listtable, listselect, listtarget, listtable2, listcol2 = ct.get('Path').split('/')  # path to values
                 except ValueError:
