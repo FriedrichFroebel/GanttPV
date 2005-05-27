@@ -76,6 +76,8 @@
 # 050504 - Alexander - moved script-running logic here; added logic to prevent no-value entries in the database; added logic to update the Window menu.
 # 050513 - Alexander - revised some dictionary fetches to ignore invalid keys (instead of raising an exception); tightened _Do logic;
 # 050519 - Brian - use TaskID instead of ParentTaskID to designate Task parent.
+# 050521 - Alexander - fixed work week bug in SetupDateConv
+# 050527 - Alexander - added 'Generation' column to designate levels in the task-parenting heirarchy; updated in GanttCalculation
 
 # import calendar
 import datetime
@@ -792,7 +794,7 @@ def SetUndo(message):
 
 def _Do(fromstack, tostack):
     global ChangedData
-    if fromstack and isinstance(fromstack[-1], string):
+    if fromstack and isinstance(fromstack[-1], str):
         savemessage = fromstack.pop()
         while fromstack and isinstance(fromstack[-1], dict):
             change = fromstack.pop()
@@ -829,6 +831,10 @@ def Update(change, push=1):
     if change.has_key('ID'):
         if debug: print "Change existing record"
         id = undo['ID'] = change['ID']
+        if not table.has_key(id):
+            if debug: print 'change specifies invalid record:', id
+            raise KeyError
+
         record = table[id]
         for c, newval in change.iteritems():  # process each new field
             if c == 'Table' or c == 'ID': continue
@@ -837,7 +843,7 @@ def Update(change, push=1):
                 undo[c] = oldval
                 if newval or newval == 0:
                     record[c] = newval
-                else:
+                elif oldval:
                     del record[c]
         CheckChange(undo)
     else:
@@ -847,14 +853,14 @@ def Update(change, push=1):
             if newval or newval == 0:
                 record[c] = newval
         undo['zzStatus'] = 'deleted'
-        # record['zzStatus'] = 'active'  # not needed; a record without a zzStatus is assumed to be active
+        # no need to set record['zzStatus']; records without it are assumed to be active
         id = NextID[tname]
         if debug: print "new id:", id
         NextID[tname] = id + 1
         record['ID'] = undo['ID'] = id
         CheckChange(record)
         ChangedRow = True  # CheckChange doesn't recognize this for new records
-        del record['Table']  # save space in the database
+        del record['Table']  # saves space
         table[id] = record
     if push: UndoStack.append(undo)
     if debug: print "End Update"
@@ -885,7 +891,8 @@ def ValidDate(value):
 
 def SetupDateConv():
     """" Setup tables that will be used for all schedule date calculations """
-    global DateConv, DateIndex, DateInfo, DateNextMonth, WeekToHour, DayToHour
+    global DateConv, DateIndex, DateInfo, DateNextMonth
+    global WeekToHour, WeekToDay, DayToHour, AllowHourToDay
     # global ChangedCalendar
     # --->> don't use 'Update' in this processing <<----
     # dow = calendar.weekday(yyyy,mm,dd)  # monday = 0
@@ -946,19 +953,18 @@ def SetupDateConv():
 
     WeekToHour = 0
     WeekToDay = 0
-    DayToHour = 0
-    AllowHourToDay = True
-
     for dayLength in wh:
         if dayLength > 0:
             WeekToHour += dayLength
             WeekToDay += 1
-            if AllowHourToDay:
-                if DayToHour == 0:
-                    DayToHour = dayLength
-                elif DayToHour != dayLength:
-                    AllowHourToDay = False
     DayToHour = WeekToHour.__truediv__(WeekToDay)
+
+    for dayLength in wh:
+        if dayLength > 0 and dayLength != DayToHour:
+            AllowHourToDay = False
+            break
+    else:
+        AllowHourToDay = True
 
     hxref = {}
     for k, v in Holiday.iteritems():
@@ -1082,7 +1088,7 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
     tpid = {}  # task's projectid
     parent = {}  # children indexed by parent id
     for k, v in Task.iteritems():  # init dependency counts, xrefs, and start dates
-        if v.get('zzStatus', 'active') == 'deleted': continue
+        if v.get('zzStatus') == 'deleted': continue
         pid = v.get('ProjectID')
         if not pid or not Project.has_key(pid): continue  # silently ignore tasks w/o projects
 
@@ -1098,7 +1104,7 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
 
         # if debug: print "task data", k, v
         p = v.get('TaskID')  # parent task id
-        if p and p != k and Task.has_key(p):  # ignore parent pointer if it points to self
+        if p and p != k and Task.has_key(p) and Task[p].get('zzStatus') != 'deleted':  # ignore parent pointer if it points to self
             if parent.has_key(p):
                 parent[p] += 1  # count the number of children
             else:
@@ -1126,7 +1132,7 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
 
     for k, v in Dependency.iteritems():
         # if debug: print "dependency record", v
-        if v.get('zzStatus', 'active') == 'deleted': continue
+        if v.get('zzStatus') == 'deleted': continue
         p = v['PrerequisiteID']
         t = v['TaskID']
         if parent.has_key(p) or parent.has_key(t): continue  # skip parent dependencies
@@ -1247,20 +1253,29 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
 
     for k, v in Task.iteritems():  # derive parent dates from children
             # reminder: make sure this handles deleted & purged records properly
-        if v.get('zzStatus', 'active') == 'deleted': continue
+        if v.get('zzStatus') == 'deleted': continue
         if parent.has_key(k):
             Task[k]['SubtaskCount'] = parent[k]  # save count of child tasks
             continue  # skip parent tasks
-        if Task[k].has_key('SubtaskCount'): del Task[k]['SubtaskCount']  # do I need to test first?
+        if Task[k].has_key('SubtaskCount'): del Task[k]['SubtaskCount']
         p = v.get('TaskID')  # parent task id
-        if not p or k == p: continue  # ignore all tasks w/o parents (or w/ self for parent)
+#         if not p or k == p: continue  # ignore all tasks w/o parents (or w/ self for parent)
         # if debug: print "adjust parents of ", k, v
         # update database -- doesn't use Update, but may in the future
         hes, hef, hls, hlf = [ v.get(x) for x in ['hES', 'hEF', 'hLS', 'hLF']]
-        loopcnt = 0
-        while p and Task.has_key(p) and loopcnt < 10:
+        lineage = []
+        while p and Task.has_key(p) and Task[p].get('zzStatus') != 'deleted':
+            if p == k or lineage.count(p):
+                break
+            lineage.append(p)
+            p = Task[p].get('TaskID')  # parent task id
+
+        Task[k]['Generation'] = len(lineage)
+        while lineage:
+            p = lineage.pop(0)
+            Task[p]['Generation'] = len(lineage)
+
             # if debug: print "adjusting parent ", p, Task[p]
-            loopcnt += 1
             phes, phef, phls, phlf = [ Task[p].get(x) for x in ['hES', 'hEF', 'hLS', 'hLF']]
             if not phes or hes < phes:
                 Task[p]['hES'] = hes
@@ -1270,11 +1285,8 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                 Task[p]['CalculatedEndDate'], Task[p]['CalculatedEndHour'] = HoursToDate(hef)
             if not phls or hls < phls: Task[p]['hLS'] = hls
             if not phlf or hlf > phlf: Task[p]['hLF'] = hlf
-
             # if debug: print "adjusted parent ", p, Task[p]
 
-            p = Task[p].get('TaskID')  # parent task id
-                                       
 # end of GanttCalculation
 # -----------------
 
@@ -1460,6 +1472,8 @@ def GetCellValue(rowid, colid, of):
                     if h > int(DayToHour): d += 1; h = 0
                 else:
                     d = 0
+
+                if h % 1: h += 1
 
                 value = []
                 if w: value.append(str(int(w)) + 'w')
@@ -1891,7 +1905,8 @@ def OpenReport(id):
 def CloseReport(id):
     """ Close a report. """
     if OpenReports.has_key(id):
-        del Report[id]['Open']
+        if Report.get(id) and Report[id].has_key('Open'):
+            del Report[id]['Open']
         OpenReports[id].Destroy()
         del OpenReports[id]
         Menu.UpdateWindowMenuItem(id)
@@ -1900,7 +1915,8 @@ def CloseReports():
     """ Close all reports except #1. """
     for id, frame in OpenReports.items():
         if id == 1: continue
-        del Report[id]['Open']
+        if Report.get(id) and Report[id].has_key('Open'):
+            del Report[id]['Open']
         frame.Destroy()
         del OpenReports[id]
     Menu.ResetWindowMenus()
@@ -2003,7 +2019,7 @@ def RunScript(path):
     name_dict = GetModuleNames()
     name_dict['self'] = OpenReports.get(ActiveReport)
     name_dict['thisfile'] = path
-    name_dict['debug'] = debug
+    name_dict['debug'] = 1
 
     try:
         execfile(path, name_dict)

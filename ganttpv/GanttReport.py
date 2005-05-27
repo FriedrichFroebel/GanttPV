@@ -74,7 +74,9 @@
 # 050504 - Alexander - implemented Window menu; moved some menu event-handling logic to Menu.py
 # 050505 - Alexander - updated time units feature to use the work week
 # 050513 - Alexander - replaced UpdateColumnWidths with new UpdateColumns; this fixes the bug where moving columns threw off cell renderers and read-only status
-# 050517 - Alexander - fixed bug where row size was not properly adjusted for the presence of a gantt column 
+# 050517 - Alexander - fixed bug where row size was not properly adjusted for the presence of a gantt column
+# 050520 - Alexander - renamed UpdateColumns into UpdateAttrs, and added a call to _updateRowAttrs; this fixes the bug where moving rows threw off row colors.
+# 050527 - Alexander - added IndentedRenderer; indents 'Name' values of subtask rows based on the task-parenting heirarchy
 
 import wx, wx.grid
 import datetime
@@ -120,7 +122,6 @@ class GanttChartTable(wx.grid.PyGridTableBase):
 
     # default behavior is to number the rows  ---- option to include the task name ?????
     # def GetRowLabelValue(self, row):
-    #    print 'grlv', row  # not currently used???
     #     return row + 1  #  self.reportrow[self.rows[row]]['TaskID']
 
     def GetValue(self, row, col):
@@ -394,7 +395,10 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                 attr.SetReadOnly(True)
                 attr.SetRenderer(renderer)
             else:
-                # if debug: print "updateColAttrs ctname", ctname
+                if ctname == 'Name':
+                    sub_renderer = grid.GetDefaultRenderer()
+                    renderer = IndentedRenderer(self, sub_renderer)
+                    attr.SetRenderer(renderer)
                 cid = self.columns[col]
                 rc = Data.ReportColumn[cid]
                 ctid = rc['ColumnTypeID']
@@ -422,8 +426,7 @@ class GanttChartTable(wx.grid.PyGridTableBase):
             hidden = rr.get('Hidden', False)
 
             attr = wx.grid.GridCellAttr()
-            # attr.SetFont(wx.Font(11, wx.DEFAULT, wx.NORMAL, wx.NORMAL))  # return to prior default
-            attr.SetFont(wx.Font(11, wx.SWISS, wx.NORMAL, wx.NORMAL))  # return to prior default
+            attr.SetFont(wx.Font(11, wx.SWISS, wx.NORMAL, wx.NORMAL))
 
             if deleted:
                 attr.SetBackgroundColour(Data.Option.get('DeletedColor', "pale green"))
@@ -438,10 +441,59 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                 # attr.SetReadOnly(True)
                 # self.SetRowAttr(row, attr)
             grid.SetRowAttr(row, attr)  # reset all other rows back to default values
-            # row += 1
 
 # ---------------------- Draw Cells of Grid -----------------------------
-# Sample wxGrid renderers
+
+class IndentedRenderer(wx.grid.PyGridCellRenderer):
+    def __init__(self, table, renderer):
+        wx.grid.PyGridCellRenderer.__init__(self)
+        self.table = table
+        self.renderer = renderer
+        self.min_width = 20
+        self.increment = 10
+
+    def GetIndentLevel(self, tname, id):
+        level = 0
+        try:
+            record = Data.Database[tname][id]
+            generation = record.get('Generation')
+            if generation:
+                level += generation
+
+#            rt = self.table.reporttype
+#            ta, tb = rt.get('TableA'), rt.get('TableB')
+#             if tname == tb:
+#                 parentid = record.get(ta + 'ID')
+#                 level += self.GetIndentLevel(ta, parentid) + 1
+
+        except KeyError:
+            pass
+        return level
+
+    def Draw(self, grid, attr, dc, rect, row, col, isSelected):
+        x, y, width, height = rect
+        max_indent = width - self.min_width
+        if max_indent > 0:
+             rr = self.table.reportrow[self.table.rows[row]]
+             tname = rr.get('TableName')
+             id = rr.get('TableID')
+             indent = self.GetIndentLevel(tname, id) * self.increment
+             if indent > 0:
+                 # fill in the background
+                 if isSelected:
+                     color = wx.SystemSettings_GetColour(wx.SYS_COLOUR_HIGHLIGHT)
+                 else:
+                     color = attr.GetBackgroundColour()
+                 dc.SetBrush(wx.Brush(color))
+                 dc.SetPen(wx.Pen(color))
+                 dc.DrawRectangle(x, y, width, height)
+                 # indent the drawing area
+                 if indent > max_indent:
+                     indent = max_indent
+                 x += indent
+                 width -= indent
+                 rect = (x, y, width, height)
+        self.renderer.Draw(grid, attr, dc, rect, row, col, isSelected)
 
 class GanttCellRenderer(wx.grid.PyGridCellRenderer):
     def __init__(self, table):
@@ -646,8 +698,9 @@ class GanttChartGrid(wx.grid.Grid):
      #     self.grid_1.EnableDragColSize(0)
      #     self.grid_1.EnableDragRowSize(0)
 
-    def UpdateColumns(self):
+    def UpdateAttrs(self):
          self.table._updateColAttrs(self)
+         self.table._updateRowAttrs(self)
 
 # UpdateColumnWidths is no good -- if the column pointers have changed, then the
 # column attributes must be updated, to preserve read-only status and cell renderers.
@@ -790,7 +843,7 @@ class GanttReportFrame(UI.ReportFrame):
         wx.EVT_MENU_RANGE(self, ID.FIRST_SCRIPT, ID.LAST_SCRIPT, Menu.doScript)
 
         # window menu events
-        wx.EVT_MENU_RANGE(self, ID.FIRST_WINDOW, ID.LAST_WINDOW, Menu.doBringWindow)
+        wx.EVT_MENU_RANGE(self, ID.FIRST_WINDOW, ID.LAST_WINDOW, self.doBringWindow)
 
         # help menu events
         wx.EVT_MENU(self, wx.ID_ABOUT, Menu.doShowAbout)
@@ -1388,6 +1441,9 @@ class GanttReportFrame(UI.ReportFrame):
     def doClose(self, event):
         Data.CloseReport(self.ReportID)
 
+    def doBringWindow(self, event):
+        Menu.doBringWindow(self, event)
+
     # ----------------- window size/position 
     def OnSize(self, event):
         size = event.GetSize()
@@ -1479,7 +1535,7 @@ class GanttReportFrame(UI.ReportFrame):
         if rlen != len(sr.rows) or clen != len(sr.columns):
             self.Report.Reset()  # tell grid that the number of rows or columns has changed
         else:
-            self.Report.UpdateColumns()
+            self.Report.UpdateAttrs()
         if debug: print "End Update Gantt Report Pointers"
 
 #---------------------------------------------------------------------------

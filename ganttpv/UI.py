@@ -138,7 +138,7 @@ class ReportFrame(wx.Frame):
         self.FileMenu.Append(wx.ID_CLOSE, "Close\tCTRL-W", "Close project file", wx.ITEM_NORMAL)
         self.FileMenu.Append(wx.ID_CLOSE_ALL, "Close Reports\tCTRL-ALT-W", "Close grid reports")
         self.FileMenu.Append(wx.ID_SAVE, "Save\tCTRL-S", "Save project file", wx.ITEM_NORMAL)
-        self.FileMenu.Append(wx.ID_SAVE, "Save\tCTRL-S", "Save project file", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_SAVEAS, "Save As...\tCTRL-SHIFT-S", "Save project file with new name", wx.ITEM_NORMAL)
         self.FileMenu.Append(wx.ID_EXIT, "Quit\tCTRL-Q", "Quit program", wx.ITEM_NORMAL)
         self.report_menubar.Append(self.FileMenu, "File")
         self.Edit = wx.Menu()

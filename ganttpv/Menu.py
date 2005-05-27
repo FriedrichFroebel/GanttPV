@@ -87,6 +87,9 @@ def doOpen(event):
 #    else:
 #        Data.CloseReport(reportid == 1)
 
+def doCloseReports(event):
+    Data.CloseReports()
+
 def doSave(event):
     """ Respond to the "Save" menu command. """
     if Data.FileName != None:
@@ -407,15 +410,12 @@ def RefreshWindowMenuItem(frame, index):
     if reportid == frame.ReportID:
         menu.Check(id, True)
 
-def doCloseReports(event):
-    Data.CloseReports()
-
-def doBringWindow(event):
+def doBringWindow(frame, event):
     id = event.GetId()
 
-    menu = event.GetEventObject()
+    mb = frame.GetMenuBar()
     check = not event.IsChecked()
-    menu.Check(id, check)
+    mb.Check(id, check)
 
     index = id - ID.FIRST_WINDOW
     if index < len(WindowOrder):

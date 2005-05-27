@@ -278,7 +278,7 @@ class ProjectReportFrame(UI.MainFrame):
         # file menu events
         wx.EVT_MENU(self, wx.ID_NEW,    Menu.doNew)
         wx.EVT_MENU(self, wx.ID_OPEN,   Menu.doOpen)
-        wx.EVT_MENU(self, wx.ID_CLOSE,  self.doClose)
+        wx.EVT_MENU(self, wx.ID_CLOSE,  Menu.doExit)
         wx.EVT_MENU(self, wx.ID_CLOSE_ALL, Menu.doCloseReports)
         wx.EVT_MENU(self, wx.ID_SAVE,   Menu.doSave)
         wx.EVT_MENU(self, wx.ID_SAVEAS, Menu.doSaveAs)
@@ -294,7 +294,7 @@ class ProjectReportFrame(UI.MainFrame):
         wx.EVT_MENU_RANGE(self, ID.FIRST_SCRIPT, ID.LAST_SCRIPT, Menu.doScript)
 
         # window menu events
-        wx.EVT_MENU_RANGE(self, ID.FIRST_WINDOW, ID.LAST_WINDOW, Menu.doBringWindow)
+        wx.EVT_MENU_RANGE(self, ID.FIRST_WINDOW, ID.LAST_WINDOW, self.doBringWindow)
 
         # help menu events
         wx.EVT_MENU(self, wx.ID_ABOUT, Menu.doShowAbout)
@@ -304,7 +304,7 @@ class ProjectReportFrame(UI.MainFrame):
 
         # frame events
         wx.EVT_ACTIVATE(self, self.OnActivate)
-        wx.EVT_CLOSE(self, self.doClose)
+        wx.EVT_CLOSE(self, Menu.doExit)
         wx.EVT_SIZE(self, self.OnSize)
         wx.EVT_MOVE(self, self.OnMove)
 
@@ -571,8 +571,8 @@ class ProjectReportFrame(UI.MainFrame):
 
     # ---- menu commands -----
 
-    def doClose(self, event):
-        Menu.doExit(self)
+    def doBringWindow(self, event):
+        Menu.doBringWindow(self, event)
 
 # ---------------- activate
 
