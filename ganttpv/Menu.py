@@ -40,6 +40,7 @@
 # 050504 - Alexander - moved some menu event-handling here from GanttPV.py and GanttReport.py; centered dialogs on screen rather than current report.
 # 050504 - enable assign dependency when selection > 1
 # 050515 - Alexander - fixed a bug in the Window menu that prevented the application build from starting
+# 050527 - Alexander - sort Script menu-items (required for Windows platform)
 
 import wx, os, webbrowser
 import Data, ID, UI
@@ -189,12 +190,13 @@ def SearchDir(path, maxDepth=0, showExtension=None, hidePrefix=None):
     Ignore files and directories whose names begin with hidePrefix.
     List format is [path, [file], [subpath, [file], ...] ...]
     """
+    found = []
     if not os.path.exists(path):
-        return []
-
-    found = [os.path.basename(path)]
-    if not os.path.isdir(path):
         return found
+
+    title = [os.path.basename(path)]
+    if not os.path.isdir(path):
+        return title
 
     contents = os.listdir(path)
     for i in contents:
@@ -216,7 +218,10 @@ def SearchDir(path, maxDepth=0, showExtension=None, hidePrefix=None):
             if not showExtension or ext == showExtension:
                 found.append([root])
 
-    return found
+    if found:
+        found.sort(lambda a, b: cmp(a[0], b[0]))
+
+    return title + found
 
 def LinearTraversal(list, verbose=False, path=None):
     """ Return a depth-first traversal of a nested list.
