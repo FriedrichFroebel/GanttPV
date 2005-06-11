@@ -1052,6 +1052,7 @@ class GanttReportFrame(UI.ReportFrame):
             if debug: print "must select at least one row"
             return  # only move if rows selected
         elif len(sel) > 1:
+            sel.sort()  # chain tasks in the order they appear on report
             rows = self.Report.table.rows
             alltids = [ Data.ReportRow[rows[x]].get('TableID') for x in sel if Data.ReportRow[rows[x]].get('TableName') == 'Task' ]
             tids = [ x for x in alltids if not Data.Task[x].get('SubtaskCount') ] # should I remove any parent tasks from the list?

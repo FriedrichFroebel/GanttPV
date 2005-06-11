@@ -41,6 +41,7 @@
 # 050504 - enable assign dependency when selection > 1
 # 050515 - Alexander - fixed a bug in the Window menu that prevented the application build from starting
 # 050527 - Alexander - sort Script menu-items (required for Windows platform)
+# 050601 - Alexander - fixed a bug in the order of dependency chaining
 
 import wx, os, webbrowser
 import Data, ID, UI
@@ -218,9 +219,7 @@ def SearchDir(path, maxDepth=0, showExtension=None, hidePrefix=None):
             if not showExtension or ext == showExtension:
                 found.append([root])
 
-    if found:
-        found.sort(lambda a, b: cmp(a[0], b[0]))
-
+    found.sort()
     return title + found
 
 def LinearTraversal(list, verbose=False, path=None):
