@@ -78,6 +78,7 @@
 # 050519 - Brian - use TaskID instead of ParentTaskID to designate Task parent.
 # 050521 - Alexander - fixed work week bug in SetupDateConv
 # 050527 - Alexander - added 'Generation' column to designate levels in the task-parenting heirarchy; updated in GanttCalculation
+# 050531 - Brian - in AdjustReportRows test to make sure parent exists before testing parent's select column value
 
 # import calendar
 import datetime
@@ -261,7 +262,7 @@ def SetTypes():
              ( 3, 'i', 'd', 'A', False, 80, 'ProjectID' ),
              ( 3, 't', 'd', 'A', True,  140, 'Name' ),
              ( 3, 'd', 'd', 'A', True,  80, 'StartDate' ),
-             ( 3, 'i', 'd', 'A', True,  80, 'DurationHours', 'Duration\n(Hours)' ),
+             ( 3, 'i', 'd', 'A', True,  80, 'DurationHours', 'Duration' ),
              ( 3, 'd', 'd', 'A', False, 80, 'CalculatedStartDate', 'Start Date\n(Calculated)' ),
              ( 3, 'd', 'd', 'A', False, 80, 'CalculatedEndDate', 'End Date\n(Calculated)' ),
              ( 3, 'g', 's', 'X', False, None, 'Day/Gantt' ),
@@ -532,7 +533,7 @@ def SetSampleData():
              ( 32, 3, 0, 140,        'Name',                 'Name',         'CHAR',         '','',          '', 0, '' ),
              ( 9, 4, 7, 140,         'Name',                 'Name',         'CHAR',         '','',          '', 0, '' ),
              ( 10, 4, 8, 80,         'Start Date',           'StartDate',    'DATE',         '','',          '', 0, '' ),
-             ( 11, 4, 9, 80,         'Duration\n (Hours)',   'DurationHours', 'INT',         '','',          '', 0, '' ),
+             ( 11, 4, 9, 80,         'Duration',             'DurationHours', 'INT',         '','',          '', 0, '' ),
              ( 14, 4, 0, None,       '',                     '',             'CHART',        '','',          'Day', 10, '2003-12-30' ),
            )
     FillTable('ReportColumn', ReportColumn, Columns, Data)
@@ -1717,7 +1718,8 @@ def AdjustReportRows():
         if debug: print "ta, tb, key, selcol", ta, tb, key, selcol
         parentid = Database[tb][key].get(ta + 'ID')
         if debug: print 'parentid', parentid
-        return Database[ta][parentid].get(selcol) == selval
+        # test to make sure parent record exists before trying selection test
+        return Database[ta].has_key(parentid) and Database[ta][parentid].get(selcol) == selval
 
     for rk, r in Report.iteritems():  # process all active reports
         if r.get('zzStatus', 'active') == 'deleted': continue
