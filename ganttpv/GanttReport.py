@@ -77,6 +77,7 @@
 # 050517 - Alexander - fixed bug where row size was not properly adjusted for the presence of a gantt column
 # 050520 - Alexander - renamed UpdateColumns into UpdateAttrs, and added a call to _updateRowAttrs; this fixes the bug where moving rows threw off row colors.
 # 050527 - Alexander - added IndentedRenderer; indents 'Name' values of subtask rows based on the task-parenting heirarchy
+# 050630 - Brian - use PlanBarColor to override default bar color
 
 import wx, wx.grid
 import datetime
@@ -609,6 +610,10 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
                 plancolor = o.get('PlanBar', wx.GREEN)
                 # actualcolor = o.get('ActualBar', wx.GREEN)
                 # basecolor = o.get('BaseBar', wx.GREEN)
+
+            override = rr.get('PlanBarColor')
+            if override and re.match('^[0-9A-Fa-f]{6}$', override):
+                plancolor = [ int(x,16) for x in (override[0:2], override[2:4], override[4:6]) ]
 
             # calculate bar location
             # (dh should be integer, but just to make sure I don't divide by a fraction below)

@@ -79,6 +79,7 @@
 # 050521 - Alexander - fixed work week bug in SetupDateConv
 # 050527 - Alexander - added 'Generation' column to designate levels in the task-parenting heirarchy; updated in GanttCalculation
 # 050531 - Brian - in AdjustReportRows test to make sure parent exists before testing parent's select column value
+# 050716 - Brian - in GetCellValue use more general routine to find period
 
 # import calendar
 import datetime
@@ -1308,6 +1309,9 @@ def GetColumnDate(colid, of):  # required by server
             if not DateConv.has_key(firstdate): firstdate = GetToday()
             index = DateConv[ firstdate ]
 
+            # use this instead?  050716
+            # result = GetPeriodStart(ctperiod, index, of)  # convert to beginning of desired period
+
             if ctperiod == "Day":
                 result = index + of
             elif ctperiod == "Week":
@@ -1513,13 +1517,18 @@ def GetCellValue(rowid, colid, of):
                 firstdate = ReportColumn[colid].get('FirstDate')
                 if not DateConv.has_key(firstdate): firstdate = GetToday()
                 index = DateConv[ firstdate ]
-                if ctperiod == "Day":
-                    date = DateIndex[ index + of ]
-                elif ctperiod == "Week":
-                    index -= DateInfo[ index ][2]  # convert to beginning of week
-                    date = DateIndex[ index + (of * 7) ]
-                else:
-                    date = None
+
+                # use more general routine --  050716
+                date = GetPeriodStart(ctperiod, index, of)  # convert to beginning of desired period
+
+                # if ctperiod == "Day":
+                #     date = DateIndex[ index + of ]
+                # elif ctperiod == "Week":
+                #     index -= DateInfo[ index ][2]  # convert to beginning of week
+                #     date = DateIndex[ index + (of * 7) ]
+                # else:
+                #     date = None
+
                 timename = tablename + ctperiod
 
                 timeid = FindID(timename, tablename + "ID", tid, 'Period', date)
