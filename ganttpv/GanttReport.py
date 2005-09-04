@@ -78,6 +78,7 @@
 # 050520 - Alexander - renamed UpdateColumns into UpdateAttrs, and added a call to _updateRowAttrs; this fixes the bug where moving rows threw off row colors.
 # 050527 - Alexander - added IndentedRenderer; indents 'Name' values of subtask rows based on the task-parenting heirarchy
 # 050630 - Brian - use PlanBarColor to override default bar color
+# 050903 - Brian - prevent negative window positions (fix problem caused when windows makes reports into icons)
 
 import wx, wx.grid
 import datetime
@@ -1464,8 +1465,10 @@ class GanttReportFrame(UI.ReportFrame):
         pos = event.GetPosition()
         # print pos
         r = Data.Database['Report'][self.ReportID]
-        r['FramePositionX'] = pos.x
-        r['FramePositionY'] = pos.y
+        if pos.x > 0 and pos.y > 0:    # when windows turns reports into tabs it sets negative positions
+                                       # that make it difficult to re-open the reports later 
+            r['FramePositionX'] = pos.x
+            r['FramePositionY'] = pos.y
 
         event.Skip()  # needed?
 

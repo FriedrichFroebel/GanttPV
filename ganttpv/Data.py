@@ -80,6 +80,7 @@
 # 050527 - Alexander - added 'Generation' column to designate levels in the task-parenting heirarchy; updated in GanttCalculation
 # 050531 - Brian - in AdjustReportRows test to make sure parent exists before testing parent's select column value
 # 050716 - Brian - in GetCellValue use more general routine to find period
+# 050903 - Brian - fixed bug in AddRow (test for None instead of false)
 
 # import calendar
 import datetime
@@ -589,7 +590,7 @@ def AddTable(name):
 def AddRow(change):  # add or update row
     changeTable = Database.get(change.get("Table"))
     changeName = change.get("Name")
-    if not changeTable or not changeName: return
+    if changeTable == None or not changeName: return
     cid = 0
     for k, v in changeTable.items():
         if v.get('Name') == changeName:
