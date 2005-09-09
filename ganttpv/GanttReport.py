@@ -23,30 +23,21 @@
 # 040409 - will display task values in report
 # 040410 - SetValue will now set Task fields
 # 040419 - changes for new ReportRow column names
-# 040420 - changes to allow Main.py to open gantt reports; doClose will close this report; 
-#               saves Report size and position
+# 040420 - changes to allow Main.py to open gantt reports; doClose will close this report; saves Report size and position
 # 040424 - added doInsertTask, doDuplicateTask, doDeleteTask
 # 040426 - added doMoveRow, added doPrerequisite
-# 040427 - added doAssignResource, onHide, onShowHidden; fixed doDelete; 
-#               save the result when the user changes columns widths; prevent changes
-#               to row height; changed some column names in ReportColumn
-# 040503 - changes to use new ReportType and ColumnType tables; added OnInsertColumn; 
-#               added row highlighting for two table reports
+# 040427 - added doAssignResource, onHide, onShowHidden; fixed doDelete; save the result when the user changes columns widths; prevent changes to row height; changed some column names in ReportColumn
+# 040503 - changes to use new ReportType and ColumnType tables; added OnInsertColumn; added row highlighting for two table reports
 # 040504 - finished OnInsertColumn; added OnDeleteColumn, and OnMoveColumn
-# 040505 - support UI changes (many references to 'Task' replaced with 'Row', format changes, and minor adjustments);
-#               revised OnInsertRow, OnDuplicateRow, and OnDeleteRow to work with all tables; added OnScroll and
-#               OnScrollToTask; use colors from Data.Option for chart
+# 040505 - support UI changes (many references to 'Task' replaced with 'Row', format changes, and minor adjustments); revised OnInsertRow, OnDuplicateRow, and OnDeleteRow to work with all tables; added OnScroll and OnScrollToTask; use colors from Data.Option for chart
 # 040508 - prevent deletion of project 1 or reports 1 or 2
-# 040510 - set minimum row size for non-gantt column in "_updateColAttrs"; set Hidden and Deleted row color;
-#               copied Scripts menu processing from Main.py; changed doClose to use Data.doClose
+# 040510 - set minimum row size for non-gantt column in "_updateColAttrs"; set Hidden and Deleted row color; copied Scripts menu processing from Main.py; changed doClose to use Data.doClose
 # 040512 - added OnEditorShown; added support for indirect column types; several bug fixes
 # 040518 - added doHome
-# 040528 - in doDuplicate only dup rows of primary table's type; in onPrerequisite only include Tasks in the 
-#               list of potential prerequisites
+# 040528 - in doDuplicate only dup rows of primary table's type; in onPrerequisite only include Tasks in the list of potential prerequisites
 # 040531 - in onDraw make sure all rectangles use new syntax for version 2.5
 # 040715 - Pierre_Rouleau@impathnetworks.com: removed all tabs, now use 4-space indentation level to comply with Official Python Guideline.
-# 040906 - changed OnInsertColumn to ignore Labels w/ value of None; display "project name / report name" in 
-#               report title.
+# 040906 - changed OnInsertColumn to ignore Labels w/ value of None; display "project name / report name" in report title.
 # 040914 - handle indirect display if no ID is found; assign project id when inserting rows into reports that can be each.
 # 040915 - allow entry of floating point numbers (type "f")
 # 040918 - add week time scale; default FirstDate in column type to today or this week
@@ -54,16 +45,13 @@
 # 041001 - display measurements in weekly time scale
 # 041009 - Alexander & Brian - default dates to current year and month; Brian - change SetValue to work on measurement time scale data
 # 041009 - change scroll to work w/ any time scale column
-# 041010 - change "column insert" to set # periods for all timescale columns; changes to allow edit of non-measurement 
-#                time scale columns
+# 041010 - change "column insert" to set # periods for all timescale columns; changes to allow edit of non-measurement   time scale columns
 # 041126 - draw bars for week timescale
 # 041203 - moved get column header logic to Data
 # 041204 - default time scale first date to today
 # 050101 - previously added month  & quarter timescale
 # 050101 - added entry of duration units datatype
-# 050105 - fix part of bug: avoid report reset unless #rows or #columns changes (report un-scrolls when reset 
-#                this was a problem when entering start dates and durations); problem still exists when adding
-#                a column or a row, but at least it will be less annoying.
+# 050105 - fix part of bug: avoid report reset unless # rows or # columns changes (report un-scrolls when reset this was a problem when entering start dates and durations); problem still exists when adding a column or a row, but at least it will be less annoying.
 # 050106 - fixed bug where deleted records threw off location of inserted rows
 # 050202 - remove line feed from insert column menu text
 # 050423 - move logic to calculate period start and hours to Data.GetPeriodInfo
@@ -76,9 +64,10 @@
 # 050513 - Alexander - replaced UpdateColumnWidths with new UpdateColumns; this fixes the bug where moving columns threw off cell renderers and read-only status
 # 050517 - Alexander - fixed bug where row size was not properly adjusted for the presence of a gantt column
 # 050520 - Alexander - renamed UpdateColumns into UpdateAttrs, and added a call to _updateRowAttrs; this fixes the bug where moving rows threw off row colors.
-# 050527 - Alexander - added IndentedRenderer; indents 'Name' values of subtask rows based on the task-parenting heirarchy
+# 050527 - Alexander - added IndentedRenderer
 # 050630 - Brian - use PlanBarColor to override default bar color
-# 050903 - Brian - prevent negative window positions (fix problem caused when windows makes reports into icons)
+# 050826 - Alexander - rewrote row/column movement!
+# 050903 - Brian - prevent negative window positions (fix problem caused when Windows iconizes reports)
 
 import wx, wx.grid
 import datetime
@@ -88,7 +77,6 @@ import Data, UI, ID, Menu
 import re
 
 debug = 1
-mac = 1    # for mac [TODO: check OS type instead]
 is24 = 1
 
 if debug: print "load GanttReport.py"
@@ -122,46 +110,16 @@ class GanttChartTable(wx.grid.PyGridTableBase):
     def GetColLabelValue(self, col):
         return Data.GetColumnHeader(self.columns[col], self.coloffset[col])
 
-    # default behavior is to number the rows  ---- option to include the task name ?????
-    # def GetRowLabelValue(self, row):
-    #     return row + 1  #  self.reportrow[self.rows[row]]['TaskID']
-
     def GetValue(self, row, col):
         return Data.GetCellValue(self.rows[row], self.columns[col], self.coloffset[col])
 
     def GetRawValue(self, row, col):  # same as GetValue  ( I don't know the difference. The example I'm following made them the same. )
+
+        # Alexander - In the wxPython demo, GetValue converted to a string,
+        #   while GetRawValue did not. But GetRawValue is not a standard
+        #   function of the base class; we don't need to add it.
+
         value = GetValue(self, row, col)
-#        of = self.coloffset[col]
-#        if of == -1:
-#            rr = self.reportrow[self.rows[row]]
-#            rtable = rr.get('TableName')
-#            tid = rr['TableID']  # was 'TaskID' -> changed to generic ID
-
-#            # rc = self.reportcolumn[self.columns[col]]
-#            ct = self.columntype[self.ctypes[col]]
-
-#            t = ct.get('T', 'X')
-#            rtid = self.report.get('ReportTypeID')
-#            ctable = Data.ReportType[rtid].get('Table' + t)
-
-#            at = ct.get('AccessType')
-#            if rtable != ctable:
-#                value = ''
-#            elif at == 'd':
-#                column = ct.get('Name')
-#                # print column  # it prints each column twice - why???
-#                value = self.data[rtable][tid].get(column, "")
-#            elif at == 'i':
-#                it, ic = ct.get('Name').split('/')  # indirect table & column
-#                iid = self.data[rtable][tid].get(it+'ID')
-#                # if debug: print "rtable, tid, it, ic, iid", rtable, tid, it, ic, iid
-#                if iid:
-#                    value = self.data[it][iid].get(ic, "")
-#                else:
-#                    value = ""
-#        else:
-#            value = 'gantt'
-#        if value == None: value = ''
         return value
 
     def SetValue(self, row, col, value):
@@ -229,22 +187,8 @@ class GanttChartTable(wx.grid.PyGridTableBase):
             except ValueError:  # should I display an error message?
                 return
         elif type == 'd':
-            if len(value) in (2, 5, 8):
-                td = Data.GetToday()
-                value = td[0:-len(value)] + value
-            if value < '1901-01-01':
-                return
-            elif Data.DateConv.has_key(value):
-                v = value
-            elif len(value) == 10 and value[4] == '-' and value[7] == '-':
-                try:
-                    datetime.date(int(value[0:4]),int(value[5:7]), int(value[8:10]))
-                    v = value
-                    Data.ChangedCalendar = True
-                except ValueError:
-                    return
-            else:
-                return
+            v = Data.CheckDateString(value)
+            if not v: return
         elif type == 'u': 
             result = re.match(r"^\s*(\d+w)?\s*(\d+d)?\s*(\d+h)?\s*$|^\s*(\d+)\s*$", value, re.I)
             if result:
@@ -254,8 +198,8 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                 else:                    
                     v = 0
                     if groups[2]: v += int(groups[2][:-1])
-                    if groups[1]: v += int(groups[1][:-1]) * Data.DayToHour
-                    if groups[0]: v += int(groups[0][:-1]) * Data.WeekToHour
+                    if groups[1]: v += int(groups[1][:-1]) * Data.HoursPerDay
+                    if groups[0]: v += int(groups[0][:-1]) * Data.HoursPerWeek
                     if v % 1: v += 1
                     v = int(v)
             else: 
@@ -276,7 +220,7 @@ class GanttChartTable(wx.grid.PyGridTableBase):
             id = self.data[rtable][tid].get(table+'ID')
             if not id: return  # don't make update if ID is invalid
             change['ID'] = id
-        elif at == 's':  # time scale ??
+        elif at == 's':
             table = timename
             column = fieldname
             if timeid: # don't add record if already exists
@@ -289,38 +233,18 @@ class GanttChartTable(wx.grid.PyGridTableBase):
 
         change['Table'] = table
         change[column] = v
-        if debug: print '---- New Value', change
         Data.Update(change)
         Data.SetUndo(column)
 
-    def ResetView(self, grid):
-        """ (wxGrid) -> Reset the grid view.
+    def ResetView(self, grid):  # deprecated
+        grid.Reset()
 
-        Call this to update the grid if rows and columns have been added or deleted.
-        """
-        grid.BeginBatch()
-
-        for current, new, delmsg, addmsg in [            (self._rows, self.GetNumberRows(), wx.grid.GRIDTABLE_NOTIFY_ROWS_DELETED, wx.grid.GRIDTABLE_NOTIFY_ROWS_APPENDED),            (self._cols, self.GetNumberCols(), wx.grid.GRIDTABLE_NOTIFY_COLS_DELETED, wx.grid.GRIDTABLE_NOTIFY_COLS_APPENDED),        ]:            if new < current:                msg = wx.grid.GridTableMessage(self,delmsg,new,current-new)                grid.ProcessTableMessage(msg)            elif new > current:                msg = wx.grid.GridTableMessage(self,addmsg,new-current)                grid.ProcessTableMessage(msg)                self.UpdateValues(grid)
-
-        self._rows = self.GetNumberRows()
-        self._cols = self.GetNumberCols()
-
-        # update the column rendering plugins
-        self._updateColAttrs(grid)
-        self._updateRowAttrs(grid)  # maybe highlight some rows
-
-        # update the scrollbars and the displayed part of the grid
-        grid.AdjustScrollbars()
-
-        grid.EndBatch()
-
-    def UpdateValues(self, grid):
-        """Update all displayed values"""
+    def UpdateValues(self, grid):  # deprecated
         # This sends an event to the grid table to update all of the values
         msg = wx.grid.GridTableMessage(self, wx.grid.GRIDTABLE_REQUEST_VIEW_GET_VALUES)
         grid.ProcessTableMessage(msg)
 
-    # -- These are not part of the standard interface - my routines to make display easier
+    # -- These are not part of the sample interface - my routines to make display easier
 
     def UpdateDataPointers(self, reportid):
         Data.UpdateDataPointers(self, reportid)
@@ -331,50 +255,32 @@ class GanttChartTable(wx.grid.PyGridTableBase):
         # self.reportrow = self.data["ReportRow"]
 
     def UpdateColumnPointers(self):
-        if debug: print 'Start UpdateColumnPointers'
-
         rc = self.reportcolumn  # pointer to table
         rct = self.columntype  # pointer to table
-        c = self.report.get('FirstColumn', 0)
+
         self.columns = []
         self.ctypes = []
         self.coloffset = []
-        while c != 0 and c != None:
-            # get info to decide whether this is a "timescale" column
-            ct = rc[c]['ColumnTypeID']
-            type = rct[ct].get('AccessType')
-            if (type == 's'):
-                for i in range(rc[c].get('Periods', 1)):
-                    self.columns.append( c )
-                    self.ctypes.append( ct )
-                    self.coloffset.append( i )
+
+        reportid = self.report.get('ID')
+        for colid in Data.GetColumnList(reportid):
+            r = rc.get(colid) or {}
+            ctid = r.get('ColumnTypeID')
+            ct = rct.get(ctid) or {}
+            type = ct.get('AccessType')
+            if type == 's':
+                # column is a time scale
+                for of in xrange(r.get('Periods') or 1):
+                    self.columns.append( colid )
+                    self.ctypes.append( ctid )
+                    self.coloffset.append( of )
             else:
-                self.columns.append( c )
-                self.ctypes.append( ct )
+                self.columns.append( colid )
+                self.ctypes.append( ctid )
                 self.coloffset.append( -1 )
-            c = rc[c].get('NextColumn', 0)
-            assert self.columns.count( c ) == 0, 'Loop in report column pointers' 
-        if debug: print 'End UpdateColumnPointers'
 
     def UpdateRowPointers(self):
         Data.UpdateRowPointers(self)
-        # rr = self.reportrow
-        # show = self.report.get('ShowHidden', False)
-        # r = self.report.get('FirstRow', 0)
-        # self.rows = []
-        # while r != 0 and r != None:
-        #         if show:
-        #                 self.rows.append( r )
-        #         else:
-        #                 hidden = rr[r].get('Hidden', False)
-        #                 table = rr[r].get('TableName')
-        #                 id = rr[r].get('TableID')
-        #                 active = table and id and (Data.Database[table][id].get('zzStatus', 'active') == 'active')
-        #                 if (not hidden) and active:
-        #                         self.rows.append( r )
-        #         # self.rows.append( r )
-        #         r = rr[r].get('NextRow', 0)
-        #         assert self.rows.count( r ) == 0, 'Loop in report column pointers' 
         
     def _updateColAttrs(self, grid):
         """
@@ -384,16 +290,17 @@ class GanttChartTable(wx.grid.PyGridTableBase):
         Otherwise default to the default renderer.
         """
         rsize = 22
-        for col in range(len(self.columns)):
+        for col in xrange(len(self.columns)):
             attr = wx.grid.GridCellAttr()
-            of = self.coloffset[col]
-            ct = self.columntype[self.ctypes[col]]  # if the column is in a report it will always have a type
+            ctid = self.ctypes[col]
+            ct = self.columntype.get(ctid) or {}
             ctname = ct.get('Name')
-            # if ctfield != "Gantt": return
+            of = self.coloffset[col]
             if of > -1 and ctname and ctname[-6:] == "/Gantt":
                 renderer = GanttCellRenderer(self)
                 grid.SetColSize(col, renderer.colSize)
-                rsize = renderer.rowSize
+                if rsize < renderer.rowSize:
+                    rsize = renderer.rowSize
                 attr.SetReadOnly(True)
                 attr.SetRenderer(renderer)
             else:
@@ -402,47 +309,49 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                     renderer = IndentedRenderer(self, sub_renderer)
                     attr.SetRenderer(renderer)
                 cid = self.columns[col]
-                rc = Data.ReportColumn[cid]
-                ctid = rc['ColumnTypeID']
+                rc = Data.ReportColumn.get(cid) or {}
                 csize = rc.get('Width') or grid.GetDefaultColSize()
                 grid.SetColSize(col, csize)
-                readonly = not Data.ColumnType[ctid].get('Edit')
+                readonly = not ct.get('Edit')
                 attr.SetReadOnly(readonly)
             grid.SetColAttr(col, attr)
         if rsize != grid.GetDefaultRowSize():
             grid.SetDefaultRowSize(rsize, True)
 
     def _updateRowAttrs(self, grid):
-        """ Highlight parent rows if two type of rows are show """
-
+        """ Highlight parent rows in split-table reports """
         rtid = self.report['ReportTypeID']
-        rt = Data.ReportType[rtid]
+        rt = Data.Database['ReportType'].get(rtid)
         ta, tb = rt.get('TableA'), rt.get('TableB')
-        # if tb == None or tb == '': return
 
-        for row in range(len(self.rows)):
-            rr = self.reportrow[self.rows[row]]
-            rowtable = rr['TableName']
-            rowid = rr['TableID']
-            deleted = Data.Database[rowtable][rowid].get('zzStatus', 'active') == 'deleted'
-            hidden = rr.get('Hidden', False)
+        for row, rowid in enumerate(self.rows):
+            rr = self.reportrow.get(rowid) or {}
+            t = rr.get('TableName')
+            tid = rr.get('TableID')
+            try:
+                deleted = (Data.Database[t][tid]['zzStatus'] == 'deleted')
+            except KeyError:
+                deleted = False
+            hidden = rr.get('Hidden')
 
             attr = wx.grid.GridCellAttr()
             attr.SetFont(wx.Font(11, wx.SWISS, wx.NORMAL, wx.NORMAL))
 
             if deleted:
-                attr.SetBackgroundColour(Data.Option.get('DeletedColor', "pale green"))
+                bgcolor = Data.Option.get('DeletedColor')
             elif hidden:
-                attr.SetBackgroundColour(Data.Option.get('HiddenColor', "pale green"))
-            elif rr.get('TableName') == ta and tb:  # parent table in two level report
-                attr.SetBackgroundColour(Data.Option.get('ParentColor', "pale green"))
+                bgcolor = Data.Option.get('HiddenColor')
+            elif t == ta and tb:
+                # parent table in two level report
+                bgcolor = Data.Option.get('ParentColor')
             else:
-                attr.SetBackgroundColour(Data.Option.get('ChildColor', "pale green"))
+                bgcolor = Data.Option.get('ChildColor')
                 # attr.SetTextColour(wxBLACK)
                 # attr.SetFont(wxFont(10, wxSWISS, wxNORMAL, wxBOLD))
                 # attr.SetReadOnly(True)
                 # self.SetRowAttr(row, attr)
-            grid.SetRowAttr(row, attr)  # reset all other rows back to default values
+            attr.SetBackgroundColour(bgcolor or "pale green")
+            grid.SetRowAttr(row, attr)
 
 # ---------------------- Draw Cells of Grid -----------------------------
 
@@ -454,33 +363,32 @@ class IndentedRenderer(wx.grid.PyGridCellRenderer):
         self.min_width = 20
         self.increment = 10
 
-    def GetIndentLevel(self, tname, id):
-        level = 0
-        try:
-            record = Data.Database[tname][id]
-            generation = record.get('Generation')
-            if generation:
-                level += generation
-
-#            rt = self.table.reporttype
-#            ta, tb = rt.get('TableA'), rt.get('TableB')
-#             if tname == tb:
-#                 parentid = record.get(ta + 'ID')
-#                 level += self.GetIndentLevel(ta, parentid) + 1
-
-        except KeyError:
-            pass
-        return level
-
     def Draw(self, grid, attr, dc, rect, row, col, isSelected):
         x, y, width, height = rect
         max_indent = width - self.min_width
         if max_indent > 0:
-             rr = self.table.reportrow[self.table.rows[row]]
-             tname = rr.get('TableName')
-             id = rr.get('TableID')
-             indent = self.GetIndentLevel(tname, id) * self.increment
+             level = self.table.rowlevels[row]
+
+             # subtract level of ancestor in primary table
+             #   (because columns are not shared between tables)
+             rt = self.table.reporttype
+             ta = rt.get('TableA')
+             rr = Data.ReportRow[self.table.rows[row]]
+             t = rr.get('TableName')
+             if t != ta:
+                 parent = row
+                 while t != ta and parent > 0:
+                     parent -= 1
+                     rr = Data.ReportRow[self.table.rows[parent]]
+                     t = rr.get('TableName')
+                 if parent >= 0:
+                     level -= self.table.rowlevels[parent] + 1
+
+             indent = level * self.increment
              if indent > 0:
+                 if indent > max_indent:
+                     indent = max_indent
+
                  # fill in the background
                  if isSelected:
                      color = wx.SystemSettings_GetColour(wx.SYS_COLOUR_HIGHLIGHT)
@@ -488,13 +396,13 @@ class IndentedRenderer(wx.grid.PyGridCellRenderer):
                      color = attr.GetBackgroundColour()
                  dc.SetBrush(wx.Brush(color))
                  dc.SetPen(wx.Pen(color))
-                 dc.DrawRectangle(x, y, width, height)
+                 dc.DrawRectangle(x, y, indent, height)
+
                  # indent the drawing area
-                 if indent > max_indent:
-                     indent = max_indent
                  x += indent
                  width -= indent
                  rect = (x, y, width, height)
+
         self.renderer.Draw(grid, attr, dc, rect, row, col, isSelected)
 
 class GanttCellRenderer(wx.grid.PyGridCellRenderer):
@@ -510,8 +418,6 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
         #                  images.getMondrianBitmap,
         #                  images.get_10s_Bitmap,
         #                  images.get_01c_Bitmap]
-        # self.colSize = None
-        # self.rowSize = None
 
         self.colSize = 24
         self.rowSize = 28
@@ -546,33 +452,6 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
         of = self.table.coloffset[col]
 
         dh, cumh, dow = Data.GetPeriodInfo(ctname, ix, of)  # if period not recognized, defaults to day
-
-#        if ctname[0:3] == "Day":
-#            dh, cumh, dow = Data.DateInfo[ix  + of]
-#        elif ctname[0:4] == "Week":
-#            ix -= Data.DateInfo[ ix ][2]  # convert to beginning of week
-#            dh, cumh, dow = Data.DateInfo[ix  + of * 7]
-#            dh2, cumh2, dow2 = Data.DateInfo[ix  + (of + 1) * 7]
-#            dh = cumh2 - cumh
-#        elif ctname[0:3] == "Mon":
-#            ix -= int(Data.DateIndex[ ix ][8:10]) - 1  # convert to beginning of month
-#            ix = Data.AddMonths(ix, of)
-#            dh, cumh, dow = Data.DateInfo[ix]
-#            dh2, cumh2, dow2 = Data.DateInfo[Data. AddMonths(ix, 1)]
-#            dh = cumh2 - cumh
-#        elif ctname[0:3] == "Qua":
-#            year = fdate[0:4]
-#            mo = fdate[5:7]
-#            if   mo <= "03": mo = "01"
-#            elif mo <= "06": mo = "04"
-#            elif mo <= "09": mo = "07"
-#            else:            mo = "10"
-#            ix = Data.DateConv[ year + '-' + mo + '-01' ]  # convert to beginning of quarter
-#            ix = Data.AddMonths(ix, of * 3)
-#            dh, cumh, dow = Data.DateInfo[ix]
-#            dh2, cumh2, dow2 = Data.DateInfo[Data. AddMonths(ix, 3)]
-#            dh = cumh2 - cumh
-#        else: return
         # if debug: print 'ix, dh, cumh', ix, dh, cumh
 
         # clear the background
@@ -593,7 +472,7 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
         else:
             dc.DrawRectangle((rect.x, rect.y), (rect.width, rect.height))
         # draw gantt bar
-        if dh >= 1:  # only display bars on days that have working hours 
+        if dh > 0:  # only display bars on days that have working hours 
 
             # get info needed to draw bar
             rr = self.table.reportrow[self.table.rows[row]]
@@ -629,11 +508,11 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
                     else: wof = int( rect.width * (cumh + dh - ef)/dh)
                     dc.SetBrush(wx.Brush(barcolor, wx.SOLID))
                     dc.SetPen(wx.Pen(barcolor, 1, wx.SOLID))
-                    # dc.DrawRectangle(rect.x+xof, rect.y+6, rect.width-wof-xof, rect.height-12)
                     if is24:
                         dc.DrawRectangle(rect.x+xof, rect.y+yof, rect.width-wof-xof, yh)
                     else:
                         dc.DrawRectangle((rect.x+xof, rect.y+yof), (rect.width-wof-xof, yh))
+
             if task.get('SubtaskCount'):
                 drawbar(es, ef, plancolor, 6, (rect.height-12)//2)  # half-height bar
             else:
@@ -644,7 +523,7 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
             # if asd: drawbar(DateInfo[DateConv[asd]][1], DateInfo[DateConv[ase]][1], actualcolor, 4, 4)
 
             # bsd = task.get('BaseStartDate')
-            # bed = task.get('BaseEndDate')
+            # bed = task.get('BaseEndDate')
             # if asd: drawbar(DateInfo[DateConv[asd]][1], DateInfo[DateConv[ase]][1], actualcolor, 20, 4)
 
         # firstdate = table.reportcolumn[table.columns[col]]['FirstDate']
@@ -672,9 +551,6 @@ class GanttChartGrid(wx.grid.Grid):
     def __init__(self, parent, reportid):
         wx.grid.Grid.__init__(self, parent, -1) # initialize base class first
 
-        # self._table = GanttChartTable(reportid)
-        # self.table = self._table  # treat table as an attribute that should be accessable
-
         self.table = GanttChartTable(reportid)
         self.SetTable(self.table)
 
@@ -697,12 +573,6 @@ class GanttChartGrid(wx.grid.Grid):
         if f:
             Menu.AdjustMenus(f)
         event.Skip()
-
-     # def __set_properties(self):
-     #    wx.grid.Grid.__set_properties(self)
-     #     self.grid_1.CreateGrid(10, 3)
-     #     self.grid_1.EnableDragColSize(0)
-     #     self.grid_1.EnableDragRowSize(0)
 
     def UpdateAttrs(self):
          self.table._updateColAttrs(self)
@@ -729,7 +599,21 @@ class GanttChartGrid(wx.grid.Grid):
 
         Call this when rows are added or destroyed
         """
-        self.table.ResetView(self)
+        self.BeginBatch()
+
+        for current, new, delmsg, addmsg in [            (self.table._rows, self.table.GetNumberRows(), wx.grid.GRIDTABLE_NOTIFY_ROWS_DELETED, wx.grid.GRIDTABLE_NOTIFY_ROWS_APPENDED),            (self.table._cols, self.table.GetNumberCols(), wx.grid.GRIDTABLE_NOTIFY_COLS_DELETED, wx.grid.GRIDTABLE_NOTIFY_COLS_APPENDED),        ]:            if new < current:                msg = wx.grid.GridTableMessage(self.table,delmsg,new,current-new)                self.ProcessTableMessage(msg)            elif new > current:                msg = wx.grid.GridTableMessage(self.table,addmsg,new-current)                self.ProcessTableMessage(msg)                msg = wx.grid.GridTableMessage(self.table, wx.grid.GRIDTABLE_REQUEST_VIEW_GET_VALUES)
+                self.ProcessTableMessage(msg)
+
+        self.table._rows = self.table.GetNumberRows()
+        self.table._cols = self.table.GetNumberCols()
+
+        # update the column rendering plugins
+        self.UpdateAttrs()
+
+        # update the scrollbars and the displayed part of the grid
+        self.AdjustScrollbars()
+
+        self.EndBatch()
 
 
 #------------------ MultiSelect Frame -----------------------------------
@@ -739,14 +623,6 @@ class MultiSelection(UI.MultipleSelection):
         # begin wxGlade: ReportFrame.__init__
         UI.MultipleSelection.__init__(self, *args, **kwds)
 
-        # these three commands were moved out of UI.ReportFrame's init
-        # self.report_window = GanttChartGrid(self, reportid)
-        # self.report_window.Reset()
-        # self.Report = self.report_window
-        # self.ReportID = reportid
-
-        # self.set_properties()  # these are in the parent class
-        # self.do_layout()
         wx.EVT_BUTTON(self, self.OK.GetId(), self.onOK)
         wx.EVT_BUTTON(self, self.Cancel.GetId(), self.onCancel)
         
@@ -764,7 +640,7 @@ class MultiSelection(UI.MultipleSelection):
                 k = self.Status[v]  # convert to current Dependency record keys
                 if debug: print "dep rec key, task key", k, self.TableIDs[v]
                 if k < 0:  # deleted, must be activated
-                    change = { 'Table': 'Dependency', 'ID': - k, 'zzStatus': 'active' }
+                    change = { 'Table': 'Dependency', 'ID': - k, 'zzStatus': None }
                     Data.Update(change)
                 elif k == 0: # no record, must add
                     change = { 'Table': 'Dependency', 'PrerequisiteID': self.TableIDs[v], 'TaskID': self.ID }
@@ -781,7 +657,7 @@ class MultiSelection(UI.MultipleSelection):
                 k = self.Status[v]  # convert to current Assignment record keys
                 if debug: print "dep rec key, task key", k, self.TableIDs[v]
                 if k < 0:  # deleted, must be activated
-                    change = { 'Table': 'Assignment', 'ID': - k, 'zzStatus': 'active' }
+                    change = { 'Table': 'Assignment', 'ID': - k, 'zzStatus': None }
                     Data.Update(change)
                 elif k == 0: # no record, must add
                     change = { 'Table': 'Assignment', 'ResourceID': self.TableIDs[v], 'TaskID': self.ID }
@@ -805,9 +681,6 @@ class GanttReportFrame(UI.ReportFrame):
     def __init__(self, reportid, *args, **kwds):
         if debug: "Start GanttReport init"
         if debug: print 'reportid', reportid
-        if debug: print 'args', args
-        if debug: print 'kwds', kwds
-        # begin wxGlade: ReportFrame.__init__
         UI.ReportFrame.__init__(self, *args, **kwds)
 
         # these three commands were moved out of UI.ReportFrame's init
@@ -896,10 +769,10 @@ class GanttReportFrame(UI.ReportFrame):
     # ------ Tool Bar Commands ---------
 
     def OnInsertRow(self, event):
+        if debug: print "Start OnInsertRow"
 
-        if debug: print " Start OnInsertRow"
         r = Data.Report[self.ReportID]
-        rt = Data.ReportType[r['ReportTypeID']]
+        rt = Data.ReportType[r['ReportTypeID']]
         ta = rt['TableA']
         tb = rt.get('TableB')  # if two table report all inserts go at the end (less confusing to user)
         each = rt.get('AllOrEach') in ['both', 'each']
@@ -920,7 +793,7 @@ class GanttReportFrame(UI.ReportFrame):
 
         s = self.Report.GetSelectedRows()  # current selection
 
-        if len(s) == 0 or tb: rlist.append(newrowid)  # if no selection add to end
+        if not s: rlist.append(newrowid)  # if no selection add to end
         else:
             rid = self.Report.table.rows[min(s)] # convert to rowid
             pos = rlist.index(rid)  # find position of selected row (should always work)
@@ -957,13 +830,13 @@ class GanttReportFrame(UI.ReportFrame):
         where = max(sel) + 1
         # print "rlist", rlist
         # print "new", new
-        rlist[where:where] = new
+        rlist.insert(where, new)
         # print "new rlist", rlist
         Data.ReorderReportRows(self.ReportID, rlist)
 
         Data.SetUndo('Duplicate Row')
 
-    def OnDeleteRow(self, event):  # this is a shallow delete -- should delete deep like I do in Main?????
+    def OnDeleteRow(self, event):  # this is a shallow delete
         if debug: print "Start OnDeleteRow"
         sel = self.Report.GetSelectedRows()  # current selection
         if len(sel) < 1: 
@@ -978,77 +851,135 @@ class GanttReportFrame(UI.ReportFrame):
             if not id: continue  # silently skip invalid table id's
             if ta == 'Project' and id == 1: continue  # certain projects and reports can't be deleted
             elif ta == 'Report' and (id == 1 or id == 2): continue
-            if Data.Database[ta][id].get('zzStatus', 'active') == 'deleted': 
-                change['zzStatus'] = 'active'
+            if Data.Database[ta][id].get('zzStatus') == 'deleted': 
+                change['zzStatus'] = None
             else:
                 change['zzStatus'] = 'deleted'
             change['Table'] = ta
             change['ID'] = id
-            if debug: print "change", change
             undo = Data.Update(change)
             cnt += 1
         if cnt > 0: Data.SetUndo('Delete/Reactivate Row')
         if debug: print "End OnDeleteRow"
 
-    # def OnEdit(self, event):
-    #    if self.report_list.currentItem:
-    #            # if project
-    #            dlg = wx.TextEntryDialog(frame, 'New project name', 'Edit Project', 'Python')
-    #            dlg.SetValue("Python is the best!")
-    #            if dlg.ShowModal() == wxID_OK:
-    #                    log.WriteText('You entered: %s\n' % dlg.GetValue())
-    #            dlg.Destroy()
-
     def OnMoveRow(self, event):
-        """ move selected rows up or down one row """
-        sel = self.Report.GetSelectedRows()  # current selection
-        if len(sel) < 1: 
-            if debug: print "can't move, no rows selected"
-            return  # only move if rows selected
-        id = event.GetId()  # move up or move down?
+        """ Move selected rows up or down by one position """
+        sel = self.Report.GetSelectedRows()
+        if not sel:
+            return
 
-        # find first and last rows (these use screen row offsets)
-        first = min(sel)
-        if first == 0 and id == ID.MOVE_UP: 
-            if debug: print "can't move up"
-            return  # can't move up, we're already there
-        last = max(sel)
-        rows = self.Report.table.rows  # list of displayed rows
-        if last == len(rows) - 1 and id == ID.MOVE_DOWN: 
-            if debug: print "can't move down"
-            return  # can't move down, we're already there
+        if event.GetId() == ID.MOVE_UP:
+            step = -1
+        else: # ID.MOVE_DOWN
+            step = 1
 
-        rlist = Data.GetRowList(self.ReportID)  # complete list of row id's in display order
-        sel.sort()  # probably sorted already, but just in case
-        sel.reverse()  # simpler to process them in descending order (all inserts at same offset)
+        rows = self.Report.table.rows
+        rowlevels = self.Report.table.rowlevels
 
-        # screen list of rows may not match complete list (example: ShowHidden == False)
-        # adjust screen offsets to offsets in complete list
-        # screen row --> report row id --> position of row id in complete list
-        seladj = [ rlist.index(rows[x]) for x in sel ]
+        # move only the best-ranking rows of the selection
+        level = max(rowlevels)
 
-        if id == ID.MOVE_UP:
-            before = rlist.index(rows[first-1])  # destination
-            rids = [ rlist.pop(x) for x in seladj  ]  # remove the row ids that are being moved
-            for x in rids: rlist.insert(before, x)  # insert the row ids before the "before" row
-        elif id == ID.MOVE_DOWN:
-            after = rlist.index(rows[last+1])  # destination
-            rids = [ rlist.pop(x) for x in seladj ]  # remove the rows that are being moved
-            a = after - len(rids) + 1
-            for x in rids: rlist.insert(a, x)  # insert the rows after the "after" row on screen
-        else: return  # shouldn't happen
+        move = []
+        for x in sel:
+            lev = rowlevels[x]
+            if lev == level:
+                move.append(x)
+            elif lev < level:
+                level = lev
+                move = [x]
+        move.sort()
 
-        Data.ReorderReportRows(self.ReportID, rlist)
+        row_set = dict.fromkeys(move)  # set of row positions
+        move_row_ids = [rows[x] for x in move]  # list of report row ids
+
+        # determine whether the selection is contiguous
+        #   (ignoring children and invisible rows)
+        start = move[0]
+        end = move[-1] + 1
+
+        for x in xrange(start, end):
+            if x in row_set:
+                continue
+            lev = rowlevels[x]
+            if lev <= level:
+                contiguous = False
+                break
+        else:
+            contiguous = True
+
+            # find the next visible, same-parent row
+            next_row_id = None
+
+            if step < 0:
+                x = start - 1
+            else:
+                x = end
+
+            while 0 <= x < len(rows):
+                lev = rowlevels[x]
+                if lev == level:
+                    next_row_id = rows[x]
+                    break
+                elif lev < level:
+                    break
+                x += step
+
+        # check for invisible rows
+        if not self.Report.table.report.get('ShowHidden'):
+            # report may include rows that are not displayed
+
+            # get report rows from database; convert row positions
+            rows, rowlevels = Data.GetRowLevels(self.ReportID)
+
+            positions = {}
+            for x, rid in enumerate(rows):
+                positions[rid] = x
+
+            row_set = {}
+            for rowid in move_row_ids:
+                if rowid in positions:
+                    pos = positions[rowid]
+                    row_set[pos] = None
+            if not row_set:
+                return
+
+            move = row_set.keys()
+            move.sort()
+
+            start = move[0]
+            end = move[-1] + 1
+        else:
+            # don't modify the row list directly
+            rows = rows[:]
+
+        if not contiguous:
+            # consolidate rows
+            if step < 0:
+                end = start + len(move)
+            else:
+                start = end - len(move)
+
+            move.reverse()
+            for x in move:
+                del rows[x]
+            rows[start:start] = move_row_ids
+
+        elif next_row_id:
+            # move next row to the other side of selection
+            if step < 0:
+                dest = end - 1
+            else:
+                dest = start
+            rows.remove(next_row_id)
+            rows.insert(dest, next_row_id)
+
+        else:
+            # nothing changed
+            return
+
+        # apply the new row order
+        Data.ReorderReportRows(self.ReportID, rows)
         Data.SetUndo('Move Row')
-
-        # make sure the same rows are selected so the same rows can be moved again
-        # selection will be thrown off by undo -- is that a problem? (selection is not an undo-able event)
-        # sel = [ self.Report.table.rows.index(x) for x in rids ]  #~~ find the new positions
-        self.Report.ClearSelection()
-        if id == ID.MOVE_UP: sel = [ x - 1 for x in sel ]  # assume everything moved one row
-        else: sel = [ x + 1 for x in sel ]
-        # self.Report.SelectRow(sel.pop(), False)
-        for x in sel: self.Report.SelectRow(x, True)
 
     def OnPrerequisite(self, event):
         # list tasks in the same order they appear now  -- use self.Report.table.rows
@@ -1056,19 +987,19 @@ class GanttReportFrame(UI.ReportFrame):
         sel = self.Report.GetSelectedRows()  # current selection
         if len(sel) < 1: 
             if debug: print "must select at least one row"
-            return  # only move if rows selected
+            return
         elif len(sel) > 1:
             sel.sort()  # chain tasks in the order they appear on report
             rows = self.Report.table.rows
             alltids = [ Data.ReportRow[rows[x]].get('TableID') for x in sel if Data.ReportRow[rows[x]].get('TableName') == 'Task' ]
-            tids = [ x for x in alltids if not Data.Task[x].get('SubtaskCount') ] # should I remove any parent tasks from the list?
+            tids = [ x for x in alltids if not Data.Task[x].get('SubtaskCount') ]
             if len(tids) > 1:
                 for i in range(len(tids) - 1):  # try to match and link each pair
                     # look for an existing dependency record
                     did = Data.FindID('Depedency', 'PrerequisiteID', tids[i], 'TaskID', tids[i+1])
                     if did:
                         if Data.Database['Dependency'][did].get('zzStatus') == 'deleted':
-                            change = { 'Table': 'Dependency', 'ID': did, 'zzStatus': 'active' }
+                            change = { 'Table': 'Dependency', 'ID': did, 'zzStatus': None }
                             Data.Update(change)
                     else:
                         change = { 'Table': 'Dependency', 'PrerequisiteID': tids[i], 'TaskID': tids[i+1] }
@@ -1081,10 +1012,10 @@ class GanttReportFrame(UI.ReportFrame):
         ta = Data.ReportRow[rowid].get('TableName')
         if ta != 'Task': return  # only on task rows
         sid = Data.ReportRow[rowid].get('TableID')
-        assert sid and sid > 0, "tried to assign prereq's to an invalid task id"
+        assert sid, "tried to assign prereq's to an invalid task id"
 
         alltid = [ Data.ReportRow[x].get('TableID') for x in rows if Data.ReportRow[x].get('TableName') == 'Task']
-        tid = [ x for x in alltid if Data.Task[x].get('zzStatus', 'active') == 'active' and x != sid]  # active displayed tasks
+        tid = [ x for x in alltid if Data.Task[x].get('zzStatus') != 'deleted' and x != sid]  # active displayed tasks
         tname = [ Data.Task[x].get('Name', "") or "--" for x in tid ]
 
         status = [0] * len(tid)  # array of 0's
@@ -1095,7 +1026,7 @@ class GanttReportFrame(UI.ReportFrame):
                 i = tid.index(p)
             except: pass
             else:
-                if v.get('zzStatus', 'active') == 'active':
+                if v.get('zzStatus') != 'deleted':
                     status[i] = k
                 else:
                     status[i] = -k
@@ -1137,7 +1068,7 @@ class GanttReportFrame(UI.ReportFrame):
 
         res = {}
         for k, v in Data.Resource.iteritems():
-            if v.get('zzStatus', 'active') != 'active': continue
+            if v.get('zzStatus') == 'deleted': continue
             name = v.get('Name')
             if name: res[name] = k
 
@@ -1154,7 +1085,7 @@ class GanttReportFrame(UI.ReportFrame):
                 i = ids.index(p)
             except: pass
             else:
-                if v.get('zzStatus', 'active') == 'active':
+                if v.get('zzStatus') != 'deleted':
                     status[i] = k
                 else:
                     status[i] = -k
@@ -1191,26 +1122,22 @@ class GanttReportFrame(UI.ReportFrame):
         rtid = r.get('ReportTypeID')  # these determine what kind of columns can be inserted
         also = Data.ReportType[rtid].get('Also')
 
-        r2 = Data.Report[2]  # report 2 defines the sequence of the column type selection list
-        menuid = []  # list of column types to be displayed for selection
-        k = r2.get('FirstRow', 0)
-        loopcheck = 0
-        while k != 0 and k != None:
+        menuid = []  # list of types to be displayed for selection
+        rlist = Data.GetRowList(2)  # report 2 defines the sequence of the report type selection list
+        for k in rlist:
             rr = Data.ReportRow[k]
             hidden = rr.get('Hidden', False)
             table = rr.get('TableName')  # should always be 'ReportType' or 'ColumnType'
             id = rr.get('TableID')
             if (not hidden) and table == 'ColumnType' and id:
                 xrtid = Data.ColumnType[id].get('ReportTypeID')
-                active = Data.ColumnType[id].get('zzStatus', 'active') == 'active'
+                active = Data.ColumnType[id].get('zzStatus') != 'deleted'
                 if active and xrtid and ( (rtid == xrtid) or (also and (also == xrtid)) ):
                     menuid.append( id )
-            k = rr.get('NextRow', 0)
-            loopcheck += 1
-            if loopcheck > 100000:  break  # prevent endless loop if data is corrupted
+
         menutext = [ (Data.ColumnType[x].get('Label') or Data.ColumnType[x].get('Name')) for x in menuid ]
         for i, v in enumerate(menutext):  # remove line feeds before menu display
-            if v.count('\n'):
+            if '\n' in v:
                 menutext[i] = v.replace('\n', ' ')
         if debug: print menuid, menutext
         dlg = wxMultipleChoiceDialog(self,
@@ -1260,79 +1187,93 @@ class GanttReportFrame(UI.ReportFrame):
 
     def OnDeleteColumn(self, event):
         if debug: print "Start OnDeleteColumn"
-        # r = Data.Report[self.ReportID]
+        sel = self.Report.GetSelectedCols()
+        if not sel: return
 
-        s = self.Report.GetSelectedCols()  # current selection
-        if len(s) == 0: return  # nothing to delete
+        clist = Data.GetColumnList(self.ReportID)
+        cids = self.Report.table.columns
 
-        change = { 'Table': 'ReportColumn', 'zzStatus': 'deleted' }
-        for i in s:
-            change['ID'] = self.Report.table.columns[i]
-            Data.Update(change)
+        sel_cids = [cids[x] for x in sel]
+        sel_map = dict.fromkeys(sel_cids)
+        clist = [x for x in clist if x not in sel_map]
 
-        Data.ReorderReportColumns(self.ReportID, [])  # keeps columns in same order, omits deleted ones
-
+        # apply the new column order
+        Data.ReorderReportColumns(self.ReportID, clist)
         Data.SetUndo('Delete Column')
+
+        # clear the selection
+        self.Report.ClearSelection()
+
         if debug: print "End OnDeleteColumn"
-        if debug: print "GetColumnList", Data.GetColumnList(self.ReportID)
 
     def OnMoveColumn(self, event):
-        """ move selected columns left or right one position. I assume selection is contiguous. """
-        if debug: print "Start MoveColumn"
-        sel = self.Report.GetSelectedCols()  # current selection
-        if debug: print "selection", sel
-        if len(sel) < 1: 
-            if debug: print "can't move, no columns selected"
-            return  # only move if columns selected
-        id = event.GetId()  # move left or right?
-        if debug: print "event id", id
-        clist = Data.GetColumnList(self.ReportID)  # complete list of row id's in display order
-        first = self.Report.table.columns[min(sel)]  # first and last selected column id's
-        firstoff = self.Report.table.coloffset[min(sel)]  # save original offset
-        last = self.Report.table.columns[max(sel)]
-        if debug: print "first, firstoff, last", first, firstoff, last
+        """ Move selected columns left or right by one position """
+        sel = self.Report.GetSelectedCols()
+        if not sel:
+            return
 
-        # find position of first and last in clist
-        f = clist.index(first)
-        l = clist.index(last)
-        cnt = l - f + 1  # number of selected column. can't use sel because same column may appear multiple times
-        if debug: print "f, l, cnt", f, l, cnt
+        if event.GetId() == ID.MOVE_LEFT:
+            step = -1
+        else: # ID.MOVE_RIGHT
+            step = 1
 
-        # find first and last rows (these use screen row offsets)
-        if f == 0 and id == ID.MOVE_LEFT: 
-            if debug: print "can't move left"
-            return  # can't move left, we're already there
-        if l == len(clist) - 1 and id == ID.MOVE_RIGHT: 
-            if debug: print "can't move right"
-            return  # can't move right, we're already there
+        cids = self.Report.table.columns
 
-        if debug: print "clist", clist
-        if id == ID.MOVE_LEFT:
-            before = f-1  # destination
-            temp = clist.pop(before)  # remove the column in front of selection
-            clist.insert(before + cnt, temp)  # re-insert behind
-        elif id == ID.MOVE_RIGHT:
-            after = l + 1  # destination
-            temp = clist.pop(after) # remove the column after selection
-            clist.insert(after - cnt, temp)  # re-insert before
-        else: return  # shouldn't happen
-        if debug: print "clist", clist
+        # get report columns from database
+        #   (grid uses multiple grid columns for certain report columns)
+        clist = Data.GetColumnList(self.ReportID)
+        cids = self.Report.table.columns
 
+        map = {}
+        for sel_x in sel:
+            try:
+                x = clist.index(cids[sel_x])
+            except:
+                continue
+            map[x] = None
+        if not map:
+            return
+
+        move = map.keys()
+        move.sort()
+
+        # perform the movement
+        start = move[0]
+        end = move[-1] + 1
+
+        if end - start > len(move):
+            # consolidate columns
+            if step < 0:
+                end = start + len(move)
+            else:
+                start = end - len(move)
+
+            move_cids = [clist[x] for x in move]
+            move.reverse()
+            for x in move:
+                del clist[x]
+
+            clist[start:start] = move_cids
+        else:
+            # move past the next column
+            if step < 0:
+                x = start - 1
+                dest = end - 1
+            else:
+                x = end
+                dest = start
+
+            if 0 <= x < len(clist):
+                cid = clist.pop(x)
+                clist.insert(dest, cid)
+                start += step
+                end += step
+            else:
+                return
+
+        # apply the new column order
         Data.ReorderReportColumns(self.ReportID, clist)
         Data.SetUndo('Move Column')
-
-        # make sure the same columns are selected so the same columns can be moved again
-        # selection will be thrown off by undo -- is that a problem? (selection is not an undo-able event)
-        for i in range(len(self.Report.table.columns)):
-            if self.Report.table.columns[i] == first and self.Report.table.coloffset[i] == firstoff:
-                break
-        sel = [ i + x for x in range(len(sel)) ]
-        if debug: print 'new sel', sel
-
-        self.Report.ClearSelection()
-        for x in sel: self.Report.SelectCol(x, True)
-        if debug: print "End MoveColumn"
-        if debug: print "GetColumnList", Data.GetColumnList(self.ReportID)
 
     def OnScroll(self, event):  # need test to make sure this is a gantt report??
         """ scroll the selected  """
@@ -1361,7 +1302,6 @@ class GanttReportFrame(UI.ReportFrame):
         elif id == ID.SCROLL_RIGHT: offset = -1
         elif id == ID.SCROLL_RIGHT_FAR: offset = -7
         change = { 'Table': 'ReportColumn', 'FirstDate': None, 'ID': None }
-        if debug: print 'scrollcols, change:', scrollcols, change
         somethingChanged = False
         for s in scrollcols:
             rc = Data.ReportColumn[s]
@@ -1382,12 +1322,11 @@ class GanttReportFrame(UI.ReportFrame):
                 datex -= Data.DateInfo[ datex ][2]  # convert to beginning of week
                 datex += offset * 7
             elif timep[0]  == 'M':
-                datex = Data.AddMonths(datex, offset)
+                datex = Data.GetPeriodStart(timep, datex, offset)
             elif timep[0]  == 'Q':
-                datex = Data.AddMonths(datex, offset * 3)
+                datex = Data.GetPeriodStart(timep, datex, offset)
             else:  # if we don't recognize the time period
                 continue
-            if datex < 0 or datex > len(Data.DateIndex): continue  # don't set to invalid date
             newdate = Data.DateIndex[datex]
             change['ID'] = s
             change['FirstDate'] = newdate
@@ -1410,7 +1349,7 @@ class GanttReportFrame(UI.ReportFrame):
         tid = rs.get('TableID')
         newdate = Data.ValidDate(Data.Task[tid].get('StartDate')) or Data.Task[tid].get('CalculatedStartDate')
         if debug: print "new date", newdate
-        if newdate == None or "": return  # not date to scroll to
+        if not newdate: return  # not date to scroll to
         scrollcols = []
         clist = Data.GetColumnList(self.ReportID)  # complete list of row id's in display order
         for c in clist:
@@ -1451,10 +1390,10 @@ class GanttReportFrame(UI.ReportFrame):
     def doBringWindow(self, event):
         Menu.doBringWindow(self, event)
 
-    # ----------------- window size/position 
+    # ----------------- window size/position
+
     def OnSize(self, event):
         size = event.GetSize()
-        # print size
         r = Data.Database['Report'][self.ReportID]
         r['FrameSizeW'] = size.width
         r['FrameSizeH'] = size.height
@@ -1463,26 +1402,26 @@ class GanttReportFrame(UI.ReportFrame):
 
     def OnMove(self, event):
         pos = event.GetPosition()
-        # print pos
-        r = Data.Database['Report'][self.ReportID]
-        if pos.x > 0 and pos.y > 0:    # when windows turns reports into tabs it sets negative positions
-                                       # that make it difficult to re-open the reports later 
+        if pos.x > 0 and pos.y > 0:
+            r = Data.Database['Report'][self.ReportID]
             r['FramePositionX'] = pos.x
             r['FramePositionY'] = pos.y
 
         event.Skip()  # needed?
 
     # ---------------- activate
+
     def OnActivate(self, event):
         if event.GetActive():
             Data.ActiveReport = self.ReportID
+        else:
+            self.Report.SaveEditControlValue()
+            self.Report.HideCellEditControl()
         event.Skip()
 
     # ---------------- Column/Row resizing
-    def OnRowSize(self, evt): pass
-        # self.log.write("OnRowSize: row %d, %s\n" %
-        #                (evt.GetRowOrCol(), evt.GetPosition()))
-        # evt.Skip()
+    def OnRowSize(self, evt):
+        pass
 
     def OnColSize(self, evt):
         if debug: print "OnColSize", (evt.GetRowOrCol(), evt.GetPosition())
@@ -1492,7 +1431,6 @@ class GanttReportFrame(UI.ReportFrame):
         if self.Report.table.coloffset[col] == -1:  # not a gantt column
             colid = self.Report.table.columns[col]
             change = { 'Table': 'ReportColumn', 'ID': colid, 'Width': newsize }
-            if debug: print 'change', change
             Data.Update(change, 0)  #  --------------------- don't allow Undo (until I can figure out how)
             # Data.SetUndo('Change Column Width')
 
@@ -1530,22 +1468,46 @@ class GanttReportFrame(UI.ReportFrame):
             Menu.UpdateWindowMenuItem(self.ReportID)
 
     def UpdatePointers(self, all=0):  # 1 = new database; 0 = changed report rows or columns
-        if debug: print "Start Update Gantt Report Pointers"
+        if debug: print "Start GanttReport UpdatePointers"
+
         # don't refresh a report if the underlying report record is invalid
-        if not Data.Report[self.ReportID].get('ReportTypeID'):  # happens if a report is "undone"
+        if all or not Data.Report[self.ReportID].get('ReportTypeID'):
             Data.CloseReport(self.ReportID)
             return
-        if all:  # shouldn't happen. All reports should be closed before opening a new database
-            self.Report.table.UpdateDataPointers()
+
         sr = self.Report.table
         rlen, clen = len(sr.rows), len(sr.columns)
+
+        select_rows = {}
+        for x in self.Report.GetSelectedRows():
+             rowid = sr.rows[x]
+             select_rows[rowid] = None
+        select_columns = {}
+        for x in self.Report.GetSelectedCols():
+             colid = sr.columns[x]
+             select_columns[colid] = None
+
         sr.UpdateColumnPointers()
         sr.UpdateRowPointers()
+
+        self.Report.BeginBatch()
+
         if rlen != len(sr.rows) or clen != len(sr.columns):
             self.Report.Reset()  # tell grid that the number of rows or columns has changed
         else:
             self.Report.UpdateAttrs()
-        if debug: print "End Update Gantt Report Pointers"
+
+        self.Report.ClearSelection()
+        for x, rowid in enumerate(sr.rows):
+             if rowid in select_rows:
+                 self.Report.SelectRow(x, True)
+        for x, colid in enumerate(sr.columns):
+             if colid in select_columns:
+                 self.Report.SelectCol(x, True)
+
+        self.Report.EndBatch()
+
+        if debug: print "End GanttReport UpdatePointers"
 
 #---------------------------------------------------------------------------
 

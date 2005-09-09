@@ -25,28 +25,19 @@
 # 040410 - Update will now update
 # 040412 - added CheckChange and SetUndo; added OpenReports
 # 040413 - added SetEmptyData
-# 040414 - renamed file to Data; added load and store routines; corrections to Update;
-#          reserved ReportID's 1 & 2 for 'Project/Report List' and 'Resource List'
+# 040414 - renamed file to Data; added load and store routines; corrections to Update; reserved ReportID's 1 & 2 for 'Project/Report List' and 'Resource List'
 # 040415 - moved menu adjust logic here from Main.py; made various changes to correct or improve logic
 # 040416 - changed gantt calculation to process all projects; wrote Undo and Redo routines
-# 040417 - added optional parameter to Update to specify whether change should be added to UndoStack;
-#          in CheckChange now sets ChangedReport flag if zzStatus appears; moved flags and variables to
-#          front of file this; added MakeReady to do all the necessary computations after a new database
-#          is loaded; added AdjustReportRows to add report rows when records are added
+# 040417 - added optional parameter to Update to specify whether change should be added to UndoStack; in CheckChange now sets ChangedReport flag if zzStatus appears; moved flags and variables to front of file this; added MakeReady to do all the necessary computations after a new database is loaded; added AdjustReportRows to add report rows when records are added
 # 040419 - reworked AdjustReportRows logic
 # 040420 - added routines to open and close reports; revised MakeReady
-# 040422 - fix so rows added by AdjustReportRows will always have a link to their parent; added row type colors
-#          for Project/Report frame
+# 040422 - fix so rows added by AdjustReportRows will always have a link to their parent; added row type colors  for Project/Report frame
 # 040423 - added ReorderReportRows; moved AutoGantt to Option; added ConfirmScripts to Option
-# 040424 - added ScriptDirectory to Option; added LoadOption and SaveOption; added GetRowList;
-#          fixed reset error in date tables;
-# 040426 - fixed Recalculate to check ChangedReport; added check for None to GetRowList and ReorderReportRows;
-#          added table Assignment; in GanttCalculation ignore deleted Dependency records
+# 040424 - added ScriptDirectory to Option; added LoadOption and SaveOption; added GetRowList; fixed reset error in date tables;
+# 040426 - fixed Recalculate to check ChangedReport; added check for None to GetRowList and ReorderReportRows; added table Assignment; in GanttCalculation ignore deleted Dependency records
 # 040427 - in Resource table changed 'LongName' to 'Name'; added Width to ReportColumn; revised ReportColumn fields
-# 040503 - added ReportType and ColumnType tables; moved UpdateDataPointers here from Main and GanttReport; added
-#          "Prerequisite" synonym for "Task" in Database
-# 040504 - added default Width to ColumnType; in gantt calculation, will ignore tasks w/o projects;
-#          added GetColumnList and ReorderReportColumns; added GetToday
+# 040503 - added ReportType and ColumnType tables; moved UpdateDataPointers here from Main and GanttReport; added "Prerequisite" synonym for "Task" in Database
+# 040504 - added default Width to ColumnType; in gantt calculation, will ignore tasks w/o projects; added GetColumnList and ReorderReportColumns; added GetToday
 # 040505 - fixed "Computed"/"Calculated" inconsistency; changed some column type labels
 # 040506 - add info line at beginning of saved files; added BaseBar to chart options
 # 040508 - start w/ empty data instead of sample data
@@ -74,27 +65,28 @@
 # 050503 - Alexander - added App, for program quiting; and ActiveReport, for script-running and window-switching
 # 050423 - moved GetPeriodInfo logic to calculate period start and hours to Data from GanttReport.py; added GetColumnDate; save "SubtaskCount" in Task table 
 # 050504 - Alexander - moved script-running logic here; added logic to prevent no-value entries in the database; added logic to update the Window menu.
-# 050513 - Alexander - revised some dictionary fetches to ignore invalid keys (instead of raising an exception); tightened _Do logic;
+# 050513 - Alexander - revised some dictionary fetches to ignore invalid keys (instead of raising an exception); tightened _Do logic
 # 050519 - Brian - use TaskID instead of ParentTaskID to designate Task parent.
 # 050521 - Alexander - fixed work week bug in SetupDateConv
 # 050527 - Alexander - added 'Generation' column to designate levels in the task-parenting heirarchy; updated in GanttCalculation
 # 050531 - Brian - in AdjustReportRows test to make sure parent exists before testing parent's select column value
 # 050716 - Brian - in GetCellValue use more general routine to find period
-# 050903 - Brian - fixed bug in AddRow (test for None instead of false)
+# 050806 - Alexander - rewrote date conversion!
+# 050814 - Alexander - added SearchByColumn
+# 050826 - Alexander - rewrote row/column ordering!
+# 050903 - Alexander - fixed bug in AddRow (was aborting when table was empty)
 
-# import calendar
-import datetime
+import datetime, calendar
 import cPickle
-import wx, os
-import Menu 
-import GanttReport
-# import Main
+import wx, os, sys
+import Menu, GanttReport
 
 debug = 1
 if debug: print "load Data.py"
+
 # On making changes in GanttPV
 # 1- Use Update for all changes
-# 2- Make change will decide the impact of the changes
+# 2- CheckChange will decide the impact of the changes
 # 3- Use SetUndo to tell GanttPV to fix anything in response to the changes
 
 def GetModuleNames():
@@ -105,7 +97,7 @@ def GetModuleNames():
     import Data, GanttPV, GanttReport, ID, Menu, UI, wx
     return locals()
 
-App = 0           # the application itself
+App = None  # the application itself
 ActiveReport = 1  # ReportID of most recently active frame
 
 # Clients should treat these tables as read only data
@@ -133,25 +125,11 @@ def CreateEmptyTables():
     Other = {}
     NextID = {}
 
-# Successor = { }  # dependency xref (used?)
-# Predecessor = { }
-
-# Date conversion tables
-DateConv = {}   # usage: index = DateConv['2004-01-01']
-DateIndex = []  # usage: date = DateIndex[1]
-DateInfo = []   # dayhours, cumhours, dow = DateInfo[1]
-DateNextMonth = {} # usage: index = DateNextMonth['2004-01']  # index is first day of next month
-
-# Time units conversion
-WeekToHour = 40
-DayToHour = 8
-AllowHourToDay = True
-
 # save impact of change until it can be addressed
 ChangedCalendar = False  # will affect calendar hours tables (gantt will have to be redone, too)
 ChangedSchedule = False  # gantt calculation must be redone
 ChangedReport = False    # report layout needs to be redone
-ChangedRow = False       # a record was added or deleted, the rows on a report may be affected
+ChangedRow = False       # a record was created, the rows on a report may be affected
 
 UndoStack = []
 RedoStack = []
@@ -170,18 +148,17 @@ Option = {  'AutoGantt' : True,  # Delay calculation of calendar and schedule ch
 # Gantt Chart Colors
 # background
             'WorkDay': (230, 230, 230),
-#           'WorkDay': (221, 221, 221),
-            'WorkDaySelected': (153, 204, 255),     # make this lighter    maybe use white only for the selected column??
-            'NotWorkDay': (204, 204, 204),                                  # more light focused on the selection
+            'WorkDaySelected': (153, 204, 255),  # make this lighter  # maybe use white only for the selected column?
+            'NotWorkDay': (204, 204, 204),  # more light focused on the selection
             'NotWorkDaySelected': (136, 187, 238),
 # bars
-            'PlanBar': (0, 153, 102),   # green             # maybe use same color for selected & not
+            'PlanBar': (0, 153, 102),   # green  # maybe use same color for selected & not
             'PlanBarSelected': (0, 153, 102),
-            'ActualBar': (0, 0, 255),    # yellow??
+            'ActualBar': (0, 0, 255),    # yellow?
             'ActualBarSelected': (0, 0, 255),
-            'BaseBar': (0, 255, 0),   # green??
+            'BaseBar': (0, 255, 0),   # green?
             'BaseBarSelected': (0, 255, 0),
-            'CompletionBar': None,          # based on BaseBar or PlanBar
+            'CompletionBar': None,  # based on BaseBar or PlanBar
             'CompletionBarSelected': None,
 
 #           'ResourceProblem': None,
@@ -194,27 +171,12 @@ Option = {  'AutoGantt' : True,  # Delay calculation of calendar and schedule ch
 
 def SetOther():
     """ These are the values that only occur once in the database """
-    global Other
-    Other = {   'ID' : 1,  # every record needs an ID
-                'BaseDate' : None,  # date numbers are relative to this date
-                'WeekHours' : (8, 8, 8, 8, 8, 0, 0),  # hours per day MTWHFSS
-            }
-    Database['OtherData'] = OtherData  # for consistent access
-    OtherData[1] = Other  # for use w/ Update
-    Database['Other'] = Other  # for simpler access
+    OtherData[1] = { 'ID' : 1,
+        'WeekHours' : (8, 8, 8, 8, 8, 0, 0),  # hours per day, MTWHFSS
+        }
+    Database['OtherData'] = OtherData
     Database['NextID'] = NextID
-    Database['Prerequisite'] = Database['Task']  # create a synonym for Task
-# don't add these until Purge has been updated to recognize them
-#    Database['SpecialTables'] = ['Other', 'NextID', 'Prerequisite', 'SpecialTables', 'Indices', 'PriorMeasurement']
-#    Database['Indices'] = { 
-#        'Dependency': ('TaskID', 'PrerequisiteID'), 
-#        'Assignment': ('TaskID', 'ResourceID'),
-#        'Holiday': ('Date', ),
-#        'ProjectMeasurement': ('ProjectID', 'MeasurementID'),
-#        'MeasurementDependency': ('MeasurementID', 'PriorMeasurementID'),
-#        'ProjectWeek': ('ProjectID', 'Week'),
-#        'ProjectDay': ('ProjectID', 'Day'),
-#    }
+    Database['Prerequisite'] = Database['Task']  # synonym for Task
 
 def FillTable(name, t, Columns, Data):
     """ Utility routine to load sample (or initial) data into database """
@@ -576,28 +538,22 @@ def SetSampleData():
     if debug: print "End SetSampleData"
 
 # ---------
-# Needed changes  <----
-# set "Also" --> replace name with ID   (done)
-# don't change labels if they already exist  (done)
 
 def AddTable(name):
-    # add the table if it doesn't already exist
-    # (Note: this part of the change isn't reversed by Undo.)
-    if name and not Database.has_key(name):
+    """ Add the table if it doesn't already exist """
+    # (Note: this isn't reversed by Undo.)
+    if name and name not in Database:
         Database[name] = {}
         Database['NextID'][name] = 1
 
-def AddRow(change):  # add or update row
-    changeTable = Database.get(change.get("Table"))
+def AddRow(change):
+    """ Add or update row """
+    changeTable = Database.get(change.get("Table")) or {}
     changeName = change.get("Name")
-    if changeTable == None or not changeName: return
-    cid = 0
-    for k, v in changeTable.items():
+    for k, v in changeTable.iteritems():
         if v.get('Name') == changeName:
-            cid = k
+            change['ID'] = k
             break
-    if cid:  # already exists
-        change['ID'] = cid
     Update(change)
 
 def AddReportType(reportType, columnTypes):
@@ -662,7 +618,6 @@ def AddReportType(reportType, columnTypes):
 
 # ---------
 def FindID(table, field1, value1, field2, value2):
-    # if debug: print "start FindID", table, field1, value1, field2, value2
     if not Database.has_key(table): return 0
     if not field2:
         for k, v in Database[table].iteritems():
@@ -671,7 +626,7 @@ def FindID(table, field1, value1, field2, value2):
         for k, v in Database[table].iteritems():
             if (v.get(field1) == value1) and (v.get(field2) == value2): return k
 
-def FindIDs(table, field1, value1, field2, value2):
+def FindIDs(table, field1, value1, field2, value2):  # deprecated
     if not Database.has_key(table): return []
     result = []
     if not field2:
@@ -682,121 +637,132 @@ def FindIDs(table, field1, value1, field2, value2):
             if (v.get(field1) == value1) and (v.get(field2) == value2): result.append(k)
     return result
 
-# --------------------- ( is this used for anything? )
-# def SetDependencyXref():
-#     for i, d in Dependency.iteritems():
-#         p = d['PrerequisiteID']
-#         s = d['TaskID']
-#         if not Predecessor.has_key(s):
-#             Predecessor[s] = []
-#         if not Successor.has_key(p):
-#             Successor[p] = []
-#         Predecessor[s].append(p)
-#         Successor[p].append(s)
+def SearchByColumn(table, search, max=None):
+    """ Search the table for specific column values
 
-# ----------------------
+    table -- a dictionary of records
+    search -- a dictionary that maps column names to values
+    max -- if given, return at most that many records
 
-# check for important changes
-def CheckChange(change):  # change contains the undo info for the changes (only changed columns included)
-    """ Check for important changes. """
+    Return a subset of the table: a dictionary that contains the matching
+    records by ID.  To match, a record must match every item in the search.
+    Note that a value of None matches the absence of a value.
+
+    """
+    result = {}
+    for id, record in table.iteritems():
+        for key, val in search.iteritems():
+            if record.get(key) != val: break
+        else:
+            result[id] = record
+            if max and len(result) >= max: break
+    return result
+
+def CheckChange(change):
+    """ Check for important changes
+
+    change -- the undo info for the changes (only changed columns included)
+    """
     global ChangedCalendar, ChangedSchedule, ChangedReport, ChangedRow
-    if debug: print "Start CheckChange"
-    if debug: print 'change', change
+    if debug: print 'CheckChange:', change
     if not change.has_key('Table'):
         if debug: print "change does not specify table"
-        return  
+        return
 
-    if change.has_key('zzStatus') and not change['Table'] in ('ReportRow', 'ReportColumn'): ChangedRow = True  # something has been added or deleted
-        # 'zzStatus' is not set for new record; ChangedRow flag is set in Update when adding a record
-        # zzStatus on all new records just takes up space.
+    if ChangedRow: pass
+    elif 'zzStatus' in change:  # something has been added or deleted
+        ChangedRow = True
+    else:
+        for k in change:
+            if k[-2:] == 'ID' and len(k) > 2:  # foreign key was changed
+                ChangedRow = True; break
 
-    if change['Table'] == 'OtherData':  # check for change in hours per day
-        # for k in ('WeekHours'):  # which of these to use?
+    if ChangedCalendar: pass 
+    elif change['Table'] == 'OtherData':
         for k in ('WeekHours',):
             if change.has_key(k): ChangedCalendar = True; break
-    elif change['Table'] == 'ReportRow':
-        for k in ('NextRow', 'Hidden', 'zzStatus'):
-            if change.has_key(k): ChangedReport = True; break
-    elif change['Table'] == 'ReportColumn':
-        for k in ('Type', 'NextColumn', 'Time', 'Periods', 'FirstDate', 'zzStatus'):
-            if change.has_key(k): ChangedReport = True; break
-    elif change['Table'] == 'Report':
-        for k in ('Name', 'FirstColumn', 'FirstRow', 'ShowHidden', 'zzStatus'):
-            if change.has_key(k): ChangedReport = True; break
-            # should I include 'Name' here? it doesn't really change the report structure to change the name
-
-    elif ChangedCalendar: pass  # everything will be refreshed anyway, don't bother looking further
     elif change['Table'] == 'Holiday':
         for k in ('Date', 'Hours', 'zzStatus'):
             if change.has_key(k): ChangedCalendar = True; break
 
-    elif ChangedSchedule: pass  # 
+    elif ChangedSchedule: pass
     elif change['Table'] == 'Task':
         for k in ('StartDate', 'DurationHours', 'zzStatus', 'ProjectID', 'TaskID'):
             if change.has_key(k): ChangedSchedule = True; break
-    elif change['Table'] == 'Dependency':  # allows dependencies that refer to different projects
+    elif change['Table'] == 'Dependency':
         for k in ('PrerequisiteID', 'TaskID', 'zzStatus'):
             if change.has_key(k): ChangedSchedule = True; break
     elif change['Table'] == 'Project':
         for k in ('zzStatus', 'StartDate'):
             if change.has_key(k) :  ChangedSchedule = True; break
-    if debug: print "End Check Change"
-# --------------------------
+
+    if ChangedRow or ChangedReport: pass
+    elif change['Table'] == 'ReportRow':
+        for k in ('NextRow', 'Hidden'):
+            if change.has_key(k): ChangedReport = True; break
+    elif change['Table'] == 'ReportColumn':
+        for k in ('Type', 'NextColumn', 'Time', 'Periods', 'FirstDate'):
+            if change.has_key(k): ChangedReport = True; break
+    elif change['Table'] == 'Report':
+        for k in ('Name', 'FirstColumn', 'FirstRow', 'ShowHidden', 'zzStatus'):
+            if change.has_key(k): ChangedReport = True; break
 
 def RefreshReports():
     if debug: print "Start RefreshReports"
-    for k, v in OpenReports.items():  # invalid or deleted reports might be closed during this loop
+    for k, v in OpenReports.items():  # deleted reports are closed during this loop
         if debug: print 'reportid', k
-        if v == None: continue
-        if Report[k].get('zzStatus', 'active') == 'deleted':
+        if not v: continue
+        if Report[k].get('zzStatus') == 'deleted':
             CloseReport(k)
         if k != 1: v.SetReportTitle()  # only grid reports
         Menu.AdjustMenus(v)
         v.Refresh()
-        # v.Report.RefreshReport()  # update displayed data
         v.Report.Refresh()  # update displayed data (needed for Main on Windows, not needed on Mac)
     if debug: print "End RefreshReports"
 
 # ----- undo and redo
 
 def Recalculate(autogantt=True):
-    global ChangedCalendar, ChangedSchedule, ChangedRow, ChangedReport
+    global ChangedCalendar, ChangedSchedule, ChangedReport
 
     UpdateCalendar = ChangedCalendar and autogantt
-    UpdateGantt = (ChangedCalendar or ChangedSchedule) and autogantt
-    UpdateReports = UpdateCalendar or UpdateGantt or ChangedReport or ChangedRow
+    UpdateGantt = UpdateCalendar or (ChangedSchedule and autogantt)
+    UpdateReports = ChangedReport or ChangedRow
 
     # these routines shouldn't add anything to the undo stack
     if UpdateCalendar:
         SetupDateConv(); ChangedCalendar = False
     if UpdateGantt:
         GanttCalculation(); ChangedSchedule = False
-    if ChangedRow:
-        AdjustReportRows(); ChangedRow = False
     if UpdateReports:
+        for v in OpenReports.values():
+            if v: v.UpdatePointers()
         ChangedReport = False
-        for k, v in OpenReports.items():  # an invalid report may be closed in this loop
-            if v == None: continue
-            v.UpdatePointers()
-    RefreshReports()  # adjust visibility/appearance of user interface objects
+
+    RefreshReports()
 
 def SetUndo(message):
     """ This is the last step in submitting a group of changes to the database. 
-            It tells the system to adjust any system calculations and to update the displays. """
-    global ChangedData, UndoStack, RedoStack
+    Adjust calculated values and update the displays.
+    """
+    global ChangedReport, ChangedRow, ChangedData, UndoStack, RedoStack
     if debug: print "Start SetUndo"
     if debug: print "message", message
 
+    if ChangedRow:
+        AdjustReportRows(); ChangedReport = True; ChangedRow = False
+
     UndoStack.append(message)
-    ChangedData = True  # file needs to be saved
     RedoStack = []  # clear out the redo stack
+    ChangedData = True  # file needs to be saved
+
     autogantt = Option.get('AutoGantt')
     Recalculate(autogantt)
 
     if debug: print "End SetUndo"
 
 def _Do(fromstack, tostack):
-    global ChangedData
+    global ChangedData, ChangedRow
     if fromstack and isinstance(fromstack[-1], str):
         savemessage = fromstack.pop()
         while fromstack and isinstance(fromstack[-1], dict):
@@ -804,8 +770,9 @@ def _Do(fromstack, tostack):
             redo = Update(change, 0)  # '0' means don't put change into Undo Stack
             tostack.append(redo)
         tostack.append(savemessage)
-        ChangedData = True  # file needs to be saved
         Recalculate()
+        ChangedRow = False  # already handled by last SetUndo
+        ChangedData = True  # file needs to be saved
 
 def DoUndo():
     _Do(UndoStack, RedoStack)
@@ -818,8 +785,7 @@ def DoRedo():
 # update routine
 def Update(change, push=1):
     global ChangedRow
-    if debug: print 'Start Update'
-    if debug: print 'change', change
+    if debug: print 'Update:', change
     tname = change.get('Table')
     if not tname:
         if debug: print 'change does not specify table'
@@ -832,33 +798,30 @@ def Update(change, push=1):
 
     undo = {'Table': tname}
     if change.has_key('ID'):
-        if debug: print "Change existing record"
         id = undo['ID'] = change['ID']
-        if not table.has_key(id):
+        if id not in table:
             if debug: print 'change specifies invalid record:', id
             raise KeyError
 
         record = table[id]
-        for c, newval in change.iteritems():  # process each new field
+        for c, newval in change.iteritems():  # process each field
             if c == 'Table' or c == 'ID': continue
             oldval = record.get(c)
             if newval != oldval:
                 undo[c] = oldval
                 if newval or newval == 0:
                     record[c] = newval
-                elif oldval:
+                else:
                     del record[c]
         CheckChange(undo)
     else:
-        if debug: print "Add new record"
         record = {}
-        for c, newval in change.iteritems():  # process each new field
+        for c, newval in change.iteritems():  # process each field
             if newval or newval == 0:
                 record[c] = newval
         undo['zzStatus'] = 'deleted'
-        # no need to set record['zzStatus']; records without it are assumed to be active
         id = NextID[tname]
-        if debug: print "new id:", id
+        if debug: print "Added new record:", id
         NextID[tname] = id + 1
         record['ID'] = undo['ID'] = id
         CheckChange(record)
@@ -866,161 +829,341 @@ def Update(change, push=1):
         del record['Table']  # saves space
         table[id] = record
     if push: UndoStack.append(undo)
-    if debug: print "End Update"
     return undo
 
-# ------------------
+########## @@@@@@@@@@ Start Alex Date Conversion @@@@@@@@@@ ########## 
 
-### date conversion routines
-def HoursToDate(hours):
-    """" return date that includes an hour and the offset into that date """
-    dmax = len(DateInfo)
-    hmax = DateInfo[-1][1]  # cum hours
-    d = int((dmax * hours) / hmax)
-    if DateInfo[d][1] > hours: i = -1
-    else: i = 1
-    while not (DateInfo[d][1] <= hours < (DateInfo[d][0] + DateInfo[d][1])): d += i
-    return DateIndex[d], hours - DateInfo[d][1]
+# calendar setup
 
-def ValidDate(value):
-    if value < '1901-01-01':
-        return ""
-    elif len(value) == 10 and value[4] == '-' and value[7] == '-':
+def SetupDateConv(): 
+    UpdateWorkWeek()
+    ReadHolidays()
+    UpdateHolidayHours()
+
+def UpdateWorkWeek():
+    global WorkWeek, WeekSize, CumWeek
+    global HoursPerWeek, DaysPerWeek, HoursPerDay, AllowDaysUnit
+    global ChangedCalendar
+    if debug: print 'start UpdateWorkWeek'
+    Other = Database['OtherData'][1]
+
+    WorkWeek = list(Other.get('WeekHours') or (8, 8, 8, 8, 8, 0, 0)) 
+    WeekSize = len(WorkWeek)
+
+    CumWeek = []
+    HoursPerWeek = DaysPerWeek = 0
+    for day in WorkWeek:
+        CumWeek.append(HoursPerWeek)
+        if day:
+            HoursPerWeek += day
+            DaysPerWeek += 1
+
+    HoursPerDay = Other.get('HoursPerDay')
+    if HoursPerDay:
+        AllowDaysUnit = True
+    else:
+        HoursPerDay = HoursPerWeek.__truediv__(DaysPerWeek)
+        AllowDaysUnit = (DaysPerWeek == WorkWeek.count(HoursPerDay))
+
+    if debug: print 'end UpdateWorkWeek'
+
+HolidayMap = {}
+HolidayDate = []
+HolidayHour = []
+HolidayAdjust = []
+
+def ReadHolidays():
+    """ Read the holiday dates and lengths from the database """
+    global HolidayMap, HolidayDate
+    if debug: print 'start ReadHolidays'
+    HolidayMap = {}
+    for r in Database['Holiday'].itervalues():
+        if r.get('zzStatus') == 'deleted': continue
+        datestr = r.get('Date')
         try:
-            datetime.date(int(value[0:4]),int(value[5:7]), int(value[8:10]))
+            date = StringToDate(datestr)
         except ValueError:
-            return ""
-    return value
+            continue
+        hours = r.get('Hours')
+        if hours:
+            HolidayMap[date] = hours
+        else:
+            HolidayMap[date] = 0
+    HolidayDate = HolidayMap.keys()
+    HolidayDate.sort()
+    if debug: print 'end ReadHolidays'
 
-def SetupDateConv():
-    """" Setup tables that will be used for all schedule date calculations """
-    global DateConv, DateIndex, DateInfo, DateNextMonth
-    global WeekToHour, WeekToDay, DayToHour, AllowHourToDay
-    # global ChangedCalendar
-    # --->> don't use 'Update' in this processing <<----
-    # dow = calendar.weekday(yyyy,mm,dd)  # monday = 0
-    # dow, days = calendar. monthrange(yyyy,mm)  #  days in month
+def UpdateHolidayHours():
+    """ Prepare the holiday conversions """
+    global HolidayHour, HolidayAdjust
+    if debug: print 'start UpdateHolidayHours'
+    HolidayHour = []
+    HolidayAdjust = [0]
+    adjust = 0
+    for date in HolidayDate:
+        w, dow = divmod(date, WeekSize)
+        newLength = HolidayMap[date]
+        oldLength = WorkWeek[dow]
+        hour = w * HoursPerWeek + CumWeek[dow] + adjust + min(newLength, oldLength, 0)
+        adjust += newLength - oldLength
+        HolidayHour.append(hour)
+        HolidayAdjust.append(adjust)
+    if debug: print 'end UpdateHolidayHours'
 
-    #   # d = date object
-    # dow = d.weekday()
-    # firstdayofweek = )
 
-    def StringToDate(stringdate):
-        return datetime.date(int(stringdate[0:4]),int(stringdate[5:7]), int(stringdate[8:10]))
+# date / hour conversion
 
-    def makeFOW(d):
-        return d - (d.weekday() * datetime.timedelta(1))   # backup to first day of week
+def DateToHours(date):
+    """ Convert a date from days to hours """
+    key = CutByValue(HolidayDate, date)
+    week, dow = divmod(date, WeekSize)
+    hour = week * HoursPerWeek + CumWeek[dow] + HolidayAdjust[key]
+    if key > 0:
+        hour = max(hour, HolidayHour[key-1])
+    return hour
 
-    Today = GetToday()
-
-    DateConv = {}  # usage: index = DateConv['2004-01-01']
-    DateIndex = []  # usage: date = DateIndex[1]
-    DateInfo = [] # dayhours, cumhours, dow = DateInfo[1]
-    DateNextMonth = {} # usage: index = DateNextMonth['2004-01']  # index is first day of next month
-
-    FirstDate = Today
-    LastDate = Today
-    oneday = datetime.timedelta(1)
-    oneweek = oneday * 7
-
-    # find the earliest and last dates that have been specified anywhere
-    for p in Project.values():
-        d = p.get('StartDate')
-        if d:
-            if d < FirstDate and ValidDate(d): FirstDate = d
-            elif d > LastDate and ValidDate(d): LastDate = d
-        d = p.get('TargetEndDate')
-        if d:
-            if d < FirstDate and ValidDate(d): FirstDate = d
-            elif d > LastDate and ValidDate(d): LastDate = d
-
-    for p in Task.values():
-        d = p.get('StartDate')
-        if d:
-            if d < FirstDate and ValidDate(d): FirstDate = d
-            elif d > LastDate and ValidDate(d): LastDate = d
-        d = p.get('EndDate')
-        if d:
-            if d < FirstDate and ValidDate(d): FirstDate = d
-            elif d > LastDate and ValidDate(d): LastDate = d
-
-    d1 = StringToDate(FirstDate)
-    d1 = makeFOW(d1) - (oneweek * 50)  # allow 50 weeks of room before the first date in the file
-
-    d2 = StringToDate(LastDate)
-    d2 = makeFOW(d2) - oneday + (oneweek * 105)
-
-    if debug: print "first & last", d1.strftime("%Y-%m-%d"), d2.strftime("%Y-%m-%d")
-
-    wh = Other.get('WeekHours') or (8,8,8,8,8,0,0)
-
-    WeekToHour = 0
-    WeekToDay = 0
-    for dayLength in wh:
-        if dayLength > 0:
-            WeekToHour += dayLength
-            WeekToDay += 1
-    DayToHour = WeekToHour.__truediv__(WeekToDay)
-
-    for dayLength in wh:
-        if dayLength > 0 and dayLength != DayToHour:
-            AllowHourToDay = False
-            break
+def HoursToDate(hours):
+    """ Convert a date from hours to days """
+    key = CutByValue(HolidayHour, hours)
+    h = hours - HolidayAdjust[key]
+    if (key > 0) and (h <= HolidayHour[key-1]):
+        date = HolidayDate[key-1]
+        hours -= HolidayHour[key-1]
     else:
-        AllowHourToDay = True
+        week, hours = divmod(h, HoursPerWeek)
+        dow = CutByValue(CumWeek, hours) - 1
+        date = week * WeekSize + dow
+        hours -= CumWeek[dow]
+    return date, hours
 
-    hxref = {}
-    for k, v in Holiday.iteritems():
-        if v.get('zzStatus', 'active') == 'deleted': continue
-        date = v.get('Date')
-        hours = v.get('Hours')
-        if date and hours != None:
-            hxref[date] = hours
-    cumhours = 0
-    i = 0
-    lastmo = FirstDate[0:7] # keep track of prior month
-    while d1 <= d2:
-        date = d1.strftime("%Y-%m-%d")
-        dow = i % 7
-        dh = hxref.get(date, wh[dow])  # use holiday hours if provided, else use week hours
-        # if debug: print "date", date, dh
-        DateConv[date] = i
-        DateIndex.append(date)
-        DateInfo.append( (dh, cumhours, dow), )  # work hours on date, work hours prior to date, day of week
-        if date[0:7] != lastmo:  # save first index of this month under prior month
-            DateNextMonth[lastmo] = i
-            lastmo = date[0:7]
-        cumhours += dh; i += 1
-        d1 += oneday
-    # if debug: print "DateNextMonth", DateNextMonth
+def HoursToDateString(hours):
+    date, hours = HoursToDate(hours)
+    return DateToString(date), hours
 
-    Other['BaseDate'] = DateIndex[0]  # The base date is a reflexion of the date conversion tables that are
-                                      # in place. It must always reflect the current tables. It is not 'undo-able'
+def CutByValue(list, value):
+    """ Return the highest index such that list[:index][k] <= value
 
-def AddMonths(ix, months):
+    list -- an ascending sequence
+    value -- the search value
+
     """
-    adds specified number of months to index
-    returns first day of month
-    """
-    if months > 0:
-        cnt = 0
-        while cnt < months and ix < len(DateIndex):
-            yymm = DateIndex[ix][0:7]
-            if DateNextMonth.has_key(yymm):
-                ix = DateNextMonth[yymm]
-            cnt += 1
+    start = 0
+    end = len(list)
+    while start < end:
+        center = (start + end) >> 1
+        if list[center] <= value:
+            start = center + 1
+        else:
+            end = center
+    return start
+
+
+base_date_object = datetime.date(2001, 1, 1)
+BaseDate = base_date_object.toordinal()
+BaseYear = base_date_object.year
+
+Years_per_Calendar_Cycle = 400  # Gregorian calendar
+Days_per_Calendar_Cycle = 146097
+
+DateFormat = "%04d-%02d-%02d"
+NegDateFormat = "-" + DateFormat
+
+
+# the current date
+
+def TodayDate():
+    y, m, d = _get_today()
+    return _ymd_to_date(y, m, d)
+
+def TodayString():
+    y, m, d = _get_today()
+    return _ymd_to_str(y, m, d)
+
+GetToday = TodayString
+
+def _get_today():
+    dateobj = datetime.date.today()
+    return _date_tuple(dateobj)
+
+def _date_tuple(dateobj):
+    return dateobj.year, dateobj.month, dateobj.day
+
+
+# parsing entered dates
+
+def CheckDateString(s):
+    try:
+        y, m, d = _user_str_to_ymd(s)
+        _ymd_to_date(y, m, d)
+    except ValueError:
+        return ""
+    return _ymd_to_str(y, m, d)
+
+def _user_str_to_ymd(s):
+    if not s:
+        raise ValueError
+
+    if s == '=':
+        return _get_today()
+    if s[0] == '*':
+        today = TodayDate()
+        dow = int(s[1:]) - 1
+        date = today + (dow - today) % WeekSize
+        return _date_to_ymd(date)
+
+    parts = s.split('-')
+    if s[0] == '-':
+        parts[:2] = ['-' + parts[1]]
+
+    ymd = [int(p) for p in parts]
+
+    if s[0] in ('+', '-'):
+        while len(ymd) < 3:
+            ymd.append(1)
+    elif len(ymd) < 3:
+        ymd[:0] = _get_today()[:-len(ymd)]
     else:
-        months *= -1
-        yy, mm = int(DateIndex[ix][0:4]), int(DateIndex[ix][5:7])
-        cnt = 0
-        while cnt < months:
-            mm += -1
-            if mm < 1: mm = 12; yy += -1
-            cnt += 1
-        newdate = "%04d-%02d-01" % (yy, mm)
-        if DateConv.has_key(newdate):
-            ix = DateConv[newdate]
-    return ix
+        magnitude = 10 ** len(parts[0])
+        currentyear = _get_today()[0]
+
+        if currentyear < 0:
+            diff = (-currentyear % magnitude) - ymd[0]
+        else:
+            diff = ymd[0] - (currentyear % magnitude)
+        year = currentyear + diff
+
+        if diff < 0:
+            if (-diff > magnitude / 2) and not (0 < -year < magnitude):
+                year += magnitude
+        elif (diff > magnitude / 2) and not (0 < year < magnitude):
+            year -= magnitude
+
+        ymd[0] = year
+
+    return ymd
+
+
+# string to date conversion
+
+def StringToDate(s):
+    y, m, d = _str_to_ymd(s)
+    date = _ymd_to_date(y, m, d)
+    return date
+
+def _str_to_ymd(s):
+    if not s:
+        raise ValueError
+    parts = s.split('-')
+    if s[0] == '-':
+        parts[:2] = ['-' + parts[1]]
+    ymd = [int(p) for p in parts]
+    return ymd
+
+def _ymd_to_date(year, month, day):
+    cycles, year = divmod(year - BaseYear, Years_per_Calendar_Cycle)
+    dateobj = datetime.date(year + BaseYear, month, day)
+    date = dateobj.toordinal() - BaseDate + cycles * Days_per_Calendar_Cycle
+    return date
+
+def _coerce_ymd_to_date(year, month, day):
+    # wrap month around year (e.g. 2005-15 -> 2006-03)
+    # if day is too high, use start of following month (e.g. Feb 31 -> Mar 1)
+
+    year += (month - 1) // 12
+    month = (month - 1) % 12 + 1
+
+    equiv_year = (year - BaseYear) % Years_per_Calendar_Cycle + BaseYear
+    if day > calendar.monthrange(equiv_year, month)[1]:
+        year += month // 12
+        month = month % 12 + 1
+
+    return _ymd_to_date(year, month, day)
+
+
+# date to string conversion
+
+def DateToString(date):
+    y, m, d = _date_to_ymd(date)
+    s = _ymd_to_str(y, m, d)
+    return s
+
+def ValidDate(s):
+    try:
+        StringToDate(s)
+        return s
+    except ValueError:
+        return ""
+
+def _date_to_ymd(date):
+    cycles, date = divmod(date, Days_per_Calendar_Cycle) 
+    dateobj = datetime.date.fromordinal(int(date) + BaseDate)
+    y, m, d = _date_tuple(dateobj)
+    y += cycles * Years_per_Calendar_Cycle
+    return y, m, d
+
+def _ymd_to_str(year, month, day):
+    if year < 0:
+        return NegDateFormat % (-year, month, day)
+    else:
+        return DateFormat % (year, month, day)
+
+
+# month intervals
+
+def AddMonths(date, months):
+    y, m, d = _date_to_ymd(date)
+    return _coerce_ymd_to_date(y, m + months, d)
+
+
+# transition objects (for backwards compatibility)
+
+class _str_to_date:
+    def __init__(self):
+        pass
+    def __contains__(self, s):
+        return ValidDate(s)
+    def __getitem__(self, s):
+        return StringToDate(s)
+    def has_key(self, key):
+        return key in self
+
+class _date_to_str:
+    def __init__(self):
+        pass
+    def __getitem__(self, d):
+        return DateToString(d)
+
+class _date_info:
+    def __init__(self):
+        pass
+    def __getitem__(self, d):
+        dow = d % WeekSize
+        dayhours = WorkWeek[dow]
+        cumhours = DateToHours(d)
+        return dayhours, cumhours, dow
+
+class _next_month:
+    def __init__(self):
+        pass
+    def __contains__(self, s):
+        return ValidDate(s)
+    def __getitem__(self, s):
+        date = StringToDate(s)
+        return AddMonths(date, 1)
+    def has_key(self, key):
+        return key in self
+
+# DateConv = {}   # usage: index = DateConv['2004-01-01']
+# DateIndex = []  # usage: date = DateIndex[1]
+# DateInfo = []   # dayhours, cumhours, dow = DateInfo[1]
+# DateNextMonth = {} # usage: index = DateNextMonth['2004-01']  # index is first day of next month
+
+DateConv = _str_to_date()
+DateIndex = _date_to_str()
+DateInfo = _date_info()
+DateNextMonth = _next_month()
+
+########## @@@@@@@@@@ End Alex Date Conversion @@@@@@@@@@ ########## 
 
 def GetPeriodStart(period, ix, of):
     return GetPeriodInfo(period, ix, of, 1)
@@ -1032,8 +1175,9 @@ def GetPeriodInfo(period, ix, of, index=0):  # needed by server
     period = period[0:3]
     if period == "Wee":
         ix -= DateInfo[ ix ][2]  # convert to beginning of week
-        dh, cumh, dow = DateInfo[ix  + of * 7]
-        dh2, cumh2, dow2 = DateInfo[ix  + (of + 1) * 7]
+        ix += of * 7
+        dh, cumh, dow = DateInfo[ix]
+        dh2, cumh2, dow2 = DateInfo[ix + 7]
         dh = cumh2 - cumh
     elif period == "Mon":
         ix -= int(DateIndex[ ix ][8:10]) - 1  # convert to beginning of month
@@ -1062,9 +1206,6 @@ def GetPeriodInfo(period, ix, of, index=0):  # needed by server
         return (dh, cumh, dow)
 
 # -----------------
-def GetToday():
-    dToday = datetime.date.today()      # get date object for today
-    return dToday.strftime("%Y-%m-%d")  # convert to standard database format
 
 def GanttCalculation(): # Gantt chart calculations - all dates are in hours
     # change = { 'Table': 'Task' }  # will be used to apply updates  --->> Don't Use 'Update' here <<--
@@ -1073,15 +1214,11 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
     if debug: print "today", Today
     ps = {}  # project start dates indexed by project id
     for k, v in Project.iteritems():
-        if v.get('zzStatus', 'active') == 'deleted': continue
+        if v.get('zzStatus') == 'deleted': continue
         sd = v.get('StartDate')
-        # if debug: print "project, startdate", k, sd
-        if sd == "": sd = Today
-        elif sd == None: sd = Today
-        elif not DateConv.has_key(sd): sd = Today  # default project start dates to today
+        # if debug: print "project", k, ", startdate", sd
+        if not (sd and sd in DateConv): sd = Today  # default project start dates to today
         ps[k] = sd
-        #ProjectStart = Project[projectid].get('StartDate', Today.strftime("%Y-%m-%d"))
-        # if debug: print "project, startdate (adjusted)", k, sd
 
     # dependencies
     pre = {}  # task prerequisites indexed by task id number
@@ -1093,7 +1230,8 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
     for k, v in Task.iteritems():  # init dependency counts, xrefs, and start dates
         if v.get('zzStatus') == 'deleted': continue
         pid = v.get('ProjectID')
-        if not pid or not Project.has_key(pid): continue  # silently ignore tasks w/o projects
+        if pid not in Project or Project[pid].get('zzStatus') == 'deleted': continue
+            # silently ignore task w/ invalid or deleted project
 
         precnt[k] = 0
         succnt[k] = 0
@@ -1102,12 +1240,11 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
         tpid[k] = pid
         # if debug: "task's project", k, pid
         tsd = v.get('StartDate')
-        if tsd == "": tsd = None
         if tsd and tsd < ps[pid]: ps[pid] = tsd  # adjust project start date if task starts are earlier
 
         # if debug: print "task data", k, v
         p = v.get('TaskID')  # parent task id
-        if p and p != k and Task.has_key(p) and Task[p].get('zzStatus') != 'deleted':  # ignore parent pointer if it points to self
+        if p != k and p in Task and Task[p].get('zzStatus') != 'deleted': 
             if parent.has_key(p):
                 parent[p] += 1  # count the number of children
             else:
@@ -1170,13 +1307,10 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                     ef = Task[t]["hEF"]
                     if ef > es: es = ef
                 # if start date was specified, use it if possible
-                # (note: the end date is not currently used to compute a start date)
+                # note: the end date is not currently used to compute a start date
                 tsd = Task[k].get('StartDate')
-                if tsd == "": tsd = None
                 ted = Task[k].get('EndDate')
-                if ted == "": ted = None
                 td  = Task[k].get('DurationHours')
-                if td == "": td = None
                 if tsd and DateConv.has_key(tsd):
                     tsi = DateConv[tsd]  # date index
                     tsh = DateInfo[tsi][1]  # date hour
@@ -1190,21 +1324,21 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
                 elif td:
                     ef = es + td
                 else:
-                    ef = es + 8
+                    ef = es + int(HoursPerDay)
 
                 if ef > ProjectEndHour[tpid[k]]: ProjectEndHour[tpid[k]] = ef  # keep track of project end date 
 
                 # update database -- doesn't use Update, but may in the future
                 Task[k]['hES'] = es
                 Task[k]['hEF'] = ef
-                Task[k]['CalculatedStartDate'], Task[k]['CalculatedStartHour'] = HoursToDate(es)
-                Task[k]['CalculatedEndDate'], Task[k]['CalculatedEndHour'] = HoursToDate(ef)
+                Task[k]['CalculatedStartDate'], Task[k]['CalculatedStartHour'] = HoursToDateString(es)
+                Task[k]['CalculatedEndDate'], Task[k]['CalculatedEndHour'] = HoursToDateString(ef)
 
                 # change['ID'] = k
                 # change['hES'] = es
                 # change['hEF'] = ef
-                # change['CalculatedStartDate'], change['CalculatedStartHour'] = HoursToDate(es)
-                # change['CalculatedEndDate'], change['CalculatedEndHour'] = HoursToDate(ef)
+                # change['CalculatedStartDate'], change['CalculatedStartHour'] = HoursToDateString(es)
+                # change['CalculatedEndDate'], change['CalculatedEndHour'] = HoursToDateString(ef)
                 # Update(change, 0)
 
                 # tell successor that I'm ready
@@ -1261,33 +1395,29 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
             Task[k]['SubtaskCount'] = parent[k]  # save count of child tasks
             continue  # skip parent tasks
         if Task[k].has_key('SubtaskCount'): del Task[k]['SubtaskCount']
+
         p = v.get('TaskID')  # parent task id
-#         if not p or k == p: continue  # ignore all tasks w/o parents (or w/ self for parent)
-        # if debug: print "adjust parents of ", k, v
-        # update database -- doesn't use Update, but may in the future
+        pid = v.get('ProjectID')
         hes, hef, hls, hlf = [ v.get(x) for x in ['hES', 'hEF', 'hLS', 'hLF']]
-        lineage = []
-        while p and Task.has_key(p) and Task[p].get('zzStatus') != 'deleted':
-            if p == k or lineage.count(p):
+
+        lineage = {}
+        while p in Task:
+            if p == k or p in lineage or Task[p].get('zzStatus') == 'deleted':
                 break
-            lineage.append(p)
+            lineage[p] = None
             p = Task[p].get('TaskID')  # parent task id
 
-        Task[k]['Generation'] = len(lineage)
-        while lineage:
-            p = lineage.pop(0)
-            Task[p]['Generation'] = len(lineage)
-
+        for p in lineage:
             # if debug: print "adjusting parent ", p, Task[p]
             phes, phef, phls, phlf = [ Task[p].get(x) for x in ['hES', 'hEF', 'hLS', 'hLF']]
-            if not phes or hes < phes:
+            if phes == None or hes < phes:
                 Task[p]['hES'] = hes
-                Task[p]['CalculatedStartDate'], Task[p]['CalculatedStartHour'] = HoursToDate(hes)
-            if not phef or hef > phef:
+                Task[p]['CalculatedStartDate'], Task[p]['CalculatedStartHour'] = HoursToDateString(hes)
+            if phef == None or hef > phef:
                 Task[p]['hEF'] = hef
-                Task[p]['CalculatedEndDate'], Task[p]['CalculatedEndHour'] = HoursToDate(hef)
-            if not phls or hls < phls: Task[p]['hLS'] = hls
-            if not phlf or hlf > phlf: Task[p]['hLF'] = hlf
+                Task[p]['CalculatedEndDate'], Task[p]['CalculatedEndHour'] = HoursToDateString(hef)
+            if phls == None or hls < phls: Task[p]['hLS'] = hls
+            if phlf == None or hlf > phlf: Task[p]['hLF'] = hlf
             # if debug: print "adjusted parent ", p, Task[p]
 
 # end of GanttCalculation
@@ -1332,7 +1462,6 @@ def GetColumnDate(colid, of):  # required by server
                 result = AddMonths(index, of * 3)
             else:
                 return None  # unknown time scale
-        if result > len(DateConv): return None
         return result  # should test to make sure it is valid
 
 def GetColumnHeader(colid, of):
@@ -1341,7 +1470,7 @@ def GetColumnHeader(colid, of):
         """
         if of == -1:
             label = ReportColumn[colid].get('Label')
-            if not label or label == "":
+            if not label:
                 ctid = ReportColumn[colid].get('ColumnTypeID')  # get column type record that corresponds to this column
                 if not ctid or not ColumnType.has_key(ctid): return ""  # shouldn't happen
                 ct = ColumnType[ctid]
@@ -1408,21 +1537,19 @@ def GetColumnHeader(colid, of):
         return label
 
 def GetCellValue(rowid, colid, of):
-        # of = self.coloffset[col]
-        ctid = ReportColumn[colid].get('ColumnTypeID')  # get column type record that corresponds to this column
-        if not ctid or not ColumnType.has_key(ctid): return ""  # shouldn't happen
+        if colid not in ReportColumn: return ""
+        rc = ReportColumn[colid]
+        ctid = rc.get('ColumnTypeID')
+        if ctid not in ColumnType: return ""
         ct = ColumnType[ctid]
-        # ct = self.columntype[self.ctypes[col]]
         if of == -1:
             rr = ReportRow[rowid]
             rtable = rr.get('TableName')
-            tid = rr['TableID']  # was 'TaskID' -> changed to generic ID
+            tid = rr['TableID']  # was 'TaskID'
 
-            # rc = self.reportcolumn[self.columns[col]]
-
-            t = ct.get('T', 'X')
+            t = ct.get('T') or 'X'
             reportid = rr.get('ReportID')
-            if not reportid or not Report.has_key(reportid): return ""  # shouldn't happen
+            if reportid not in Report: return ""
             rtid = Report[reportid].get('ReportTypeID')
             ctable = ReportType[rtid].get('Table' + t)
 
@@ -1461,21 +1588,21 @@ def GetCellValue(rowid, colid, of):
                     value = ""
                 else:
                     listvalue = Database[rtable][tid].get(listcol)
-                    rows = FindIDs(listtable, listselect, listvalue, None, None)
-                    if rows:
-                        vals = [ Database[listtable][x].get(listtarget) for x in rows if not Database[listtable][x].get('zzStatus') == 'deleted']
-                        if listtable2 and listcol2:
-                            vals = [ Database[listtable2][x].get(listcol2) or "-" for x in vals if not Database[listtable2][x].get('zzStatus') == 'deleted']
-                        value = ", ".join( [ str(x) for x in vals ] )  # need to check this with unicode
-                    else:
-                        value = ""
+                    table = Database.get(listtable) or {}
+                    records = SearchByColumn(table, {listselect: listvalue})
+                    vals = [(r.get(listtarget) or "-") for r in records.itervalues() if r.get('zzStatus') != 'deleted']
+                    if listtable2 and listcol2:
+                        table = Database.get(listtable2) or {}
+                        records = [table.get(v) for v in vals]
+                        vals = [r.get(listcol2) or "-" for r in records if r and r.get('zzStatus') != 'deleted']
+                    value = ", ".join( [ str(x) for x in vals ] )
             if dt == 'u' and isinstance(value, int) and value > 0:
-                w, h = divmod(value, WeekToHour)
-                if h > int(WeekToHour): w += 1; h = 0
+                w, h = divmod(value, HoursPerWeek)
+                if h > int(HoursPerWeek): w += 1; h = 0
 
-                if AllowHourToDay:
-                    d, h = divmod(h, DayToHour)
-                    if h > int(DayToHour): d += 1; h = 0
+                if AllowDaysUnit:
+                    d, h = divmod(h, HoursPerDay)
+                    if h > int(HoursPerDay): d += 1; h = 0
                 else:
                     d = 0
 
@@ -1517,21 +1644,11 @@ def GetCellValue(rowid, colid, of):
                 # find the period date
                 firstdate = ReportColumn[colid].get('FirstDate')
                 if not DateConv.has_key(firstdate): firstdate = GetToday()
-                index = DateConv[ firstdate ]
-
-                # use more general routine --  050716
-                date = GetPeriodStart(ctperiod, index, of)  # convert to beginning of desired period
-
-                # if ctperiod == "Day":
-                #     date = DateIndex[ index + of ]
-                # elif ctperiod == "Week":
-                #     index -= DateInfo[ index ][2]  # convert to beginning of week
-                #     date = DateIndex[ index + (of * 7) ]
-                # else:
-                #     date = None
+                index = DateConv[firstdate]
+                index = GetPeriodStart(ctperiod, index, of)
+                date = DateIndex[index]
 
                 timename = tablename + ctperiod
-
                 timeid = FindID(timename, tablename + "ID", tid, 'Period', date)
                 # if debug: print "timeid", timeid
                 if timeid:
@@ -1546,8 +1663,8 @@ def GetCellValue(rowid, colid, of):
         return value
 
 # -----------------
-def UpdateDataPointers(self, reportid):  # self is either a list or a table behind a grid
-    if debug: print "Start UpdateDataPointers"
+def UpdateDataPointers(self, reportid):
+    # self is either a list or a table behind a grid
     # create local pointers to database
     self.data = Database
     # pointers to one record
@@ -1559,301 +1676,299 @@ def UpdateDataPointers(self, reportid):  # self is either a list or a table behi
     self.reportcolumn = self.data["ReportColumn"]
     self.columntype = self.data["ColumnType"]
     self.reportrow = self.data["ReportRow"]
-    if debug: print "End UpdateDataPointers"
 
-def UpdateRowPointers(self):  # self is object that stores 'rows', used by all reports to create local pointers to report rows
-    rr = self.reportrow  # pointer to report row table
-    show = self.report.get('ShowHidden', False)
-    r = self.report.get('FirstRow', 0)
+########## @@@@@@@@@@ Start Alex Row/Column Order @@@@@@@@@@ ##########
+
+def UpdateRowPointers(self):
+    # self is either a list or a table behind a grid
+
+    reportid = self.report.get('ID')
+    rows, rowlevels = GetRowLevels(reportid)
+
+    if self.report.get('ShowHidden'):
+        self.rows = rows
+        self.rowlevels = rowlevels
+        return
+
     self.rows = []
-    while r != 0 and r != None:
-        if show:
-            self.rows.append( r )
-        else:
-            hidden = rr[r].get('Hidden', False)
-            table = rr[r].get('TableName')
-            id = rr[r].get('TableID')
-            active = table and id and (Database[table][id].get('zzStatus', 'active') == 'active')
-            if (not hidden) and active:
-                self.rows.append( r )
-        r = rr[r].get('NextRow', 0)
-        assert self.rows.count( r ) == 0, 'Loop in report row pointers' 
+    self.rowlevels = []
+    level = 0  # maximum level of next row
 
-# ----
+    for rowid, lev in zip(rows, rowlevels):
+        if lev > level:
+            # parent is not shown
+            continue
+        level = lev
 
-def GetColumnList(reportid):  # returns list of column id's in the current order
+        r = ReportRow.get(rowid) or {}
+        hidden = r.get('Hidden')
+        try:
+            t = r['TableName']
+            id = r['TableID']
+            deleted = (Database[t][id].get('zzStatus') == 'deleted')
+        except KeyError:
+            deleted = True
+
+        if not (hidden or deleted):
+            self.rows.append(rowid)
+            self.rowlevels.append(lev)
+            level += 1
+
+def GetColumnList(reportid):
+    """ Return list of column id's in the current order """
     ids = []
-    loopcheck = 0
-    k = Report[reportid].get('FirstColumn', 0)
-    while k != 0 and k != None:
+    done = {}
+    report = Report.get(reportid) or {}
+    k = report.get('FirstColumn')
+    while k in ReportColumn and k not in done:
         ids.append(k)
-        k = ReportColumn[k].get('NextColumn', 0)
-        loopcheck += 1
-        if loopcheck > 100000:  break  # prevent endless loop
+        done[k] = None
+        k = ReportColumn[k].get('NextColumn')
     return ids
 
-def ReorderReportColumns(reportid, ids):
-    """ Use the ids to resequence report columns for report 
-        Any ids not included in the new list are appended in the same sequence as before
-        Deleted columns are omitted.  (Remove deleted columns by calling w/ empty 'ids' list)
+def ReorderReportColumns(reportid, columnids):
+    """ Use the list of column ids as the columns sequence of the report
+
+    Ignores duplicates.  Calling routine must call 'SetUndo'.
+
     """
     if debug: print "Start ReorderReportColumns"
-    newseq = []
-    keys = {  }# collect id's of all valid columns
-    for k, v in ReportColumn.iteritems():  
-        status = v.get('zzStatus')
-        if v.get('ReportID') == reportid and (status == 'active' or status == None):
-            keys[k] = None
-    # make sure all id's in new list are valid, remove duplicates
-    for k in ids:
-        if keys.has_key(k):
-            newseq.append(k)
-            del keys[k]
-    # append any remaining report column records at end
-    loopcheck = 0
-    k = Report[reportid].get('FirstColumn', 0)
-    while k != 0 and k != None:
-        if keys.has_key(k):  # valid and not already in list
-            newseq.append(k)
-            del keys[k]
-        k = ReportColumn[k].get('NextColumn', 0)
-        loopcheck += 1
-        if loopcheck > 100000:  break  # prevent endless loop
-    # newseq.extend(keys.keys())  # if not in new or prior list, just ignore it silently
-    # perhaps in the future these should be 'deleted'???
-    newseq.append(0)  # end of list marker
 
-    # apply the new sequence to the report Columns
-    newid = newseq.pop(0)
-    if Report[reportid].get('FirstColumn', 0) != newid:
-        change = {'Table': 'Report', 'ID': reportid, 'FirstColumn': newid }
-        Update(change)
-    change = {'Table': 'ReportColumn', 'ID': None, 'NextColumn': None }
-    while len(newseq) > 0:
-        prior = newid
-        newid = newseq.pop(0)
-        if ReportColumn[prior].get('NextColumn', 0) != newid:
-            change['ID'] = prior
-            change['NextColumn'] = newid
+    # remove duplicates
+    stack = []
+    done = {}
+    for id in columnids:
+        if (id not in done) and (id in ReportColumn):
+            stack.append(id)
+            done[id] = None
+    stack.reverse()
+
+    # apply new order
+    next = None
+    for id in stack:
+        if ReportColumn[id].get('NextColumn') != next:
+            change = {'Table': 'ReportColumn', 'ID': id, 'NextColumn': next}
             Update(change)
-    # calling routine must call 'SetUndo'
+        next = id
+    if Report[reportid].get('FirstColumn') != next:
+        change = {'Table': 'Report', 'ID': reportid, 'FirstColumn': next}
+        Update(change)
+
     if debug: print "End ReorderReportColumns"
 
-# ----
+def GetRowList(reportid):
+    """ Returns a list of row ids in the current order """
+    ids = []
+    done = {}
+    report = Report.get(reportid) or {}
+    k = report.get('FirstRow')
+    while k in ReportRow and k not in done:
+        ids.append(k)
+        done[k] = None
+        k = ReportRow[k].get('NextRow')
+    return ids
 
-def GetRowList(reportid):  # returns an order list or row id's in the current order
-    rowids = []
-    loopcheck = 0
-    k = Report[reportid].get('FirstRow', 0)
-    while k != 0 and k != None:
-        rowids.append(k)
-        k = ReportRow[k].get('NextRow', 0)
-        loopcheck += 1
-        if loopcheck > 100000:  break  # prevent endless loop
-    return rowids
+def GetRowLevels(reportid):
+    """ Return two lists: row ids and row levels (ie - ancestor counts) """
+    rlist = GetRowList(reportid)
+    rlevels = []
+
+    stack = []
+    for rid in rlist:
+        rr = ReportRow.get(rid) or {}
+        parent = rr.get('ParentRow')
+        while stack:
+            if stack[-1] == parent:
+                break
+            stack.pop()
+        rlevels.append(len(stack))
+        stack.append(rid)
+
+    return rlist, rlevels
 
 def ReorderReportRows(reportid, rowids):
-    """ Use the rowids to resequence report rows for report 
-        Any rowids not included in the list are appended in the same sequence as before
+    """ Use the list of rowids as the row sequence of the report
+
+    Ignore duplicates.  Keep children with parents.
+    Calling routine must call 'SetUndo'.
+
     """
     if debug: print "Start ReorderReportRows"
-    newseq = []
-    keys = {}
-    for k, v in ReportRow.iteritems():  
-        if v.get('ReportID') == reportid:
-            keys[k] = None
-    # make sure all id's are valid, remove duplicates
-    for k in rowids:
-        if keys.has_key(k):
-            newseq.append(k)
-            del keys[k]
-    # append any remaining reportrow records
-    loopcheck = 0
-    k = Report[reportid].get('FirstRow', 0)
-    while k != 0 and k != None:
-        if keys.has_key(k):
-            newseq.append(k)
-            del keys[k]
-        k = ReportRow[k].get('NextRow', 0)
-        loopcheck += 1
-        if loopcheck > 100000:  break  # prevent endless loop
-    newseq.extend(keys.keys())  # anything not in prior list is appended to the new one
-    newseq.append(0)  # end of list marker
 
-    # apply the new sequence to the report rows
-    newid = newseq.pop(0)
-    if Report[reportid].get('FirstRow', 0) != newid:
-        change = {'Table': 'Report', 'ID': reportid, 'FirstRow': newid }
+    # remove duplicates
+    queue = []
+    done = {}
+    for id in rowids:
+        if (id not in done) and (id in ReportRow):
+            queue.append(id)
+            done[id] = None
+
+    # examine hierarchy
+    godfamily = {}
+    family = {}  # {parent: [child, ...]}
+        # godfamily is cross-table; family is same-table
+
+    stack = []
+    for id in queue:
+        record = ReportRow[id]
+        parent = record.get('ParentRow')
+        if parent in ReportRow:
+            if parent not in family:
+                godfamily[parent] = []
+                family[parent] = []
+            prec = ReportRow[parent]
+            if prec.get('TableName') == record.get('TableName'):
+                family[parent].append(id)
+            else:
+                godfamily[parent].append(id)
+        else:
+            stack.append(id)
+
+    # apply new order
+    next = None
+    while stack:
+        id = stack[-1]
+        if id in family:
+            stack += godfamily.pop(id) + family.pop(id)
+        else:
+            stack.pop()
+            if ReportRow[id].get('NextRow') != next:
+                change = {'Table': 'ReportRow', 'ID': id, 'NextRow': next}
+                Update(change)
+            next = id
+    if Report[reportid].get('FirstRow') != next:
+        change = {'Table': 'Report', 'ID': reportid, 'FirstRow': next}
         Update(change)
-    change = {'Table': 'ReportRow', 'ID': None, 'NextRow': None }
-    while len(newseq) > 0:
-        prior = newid
-        newid = newseq.pop(0)
-        if ReportRow[prior].get('NextRow', 0) != newid:
-            change['ID'] = prior
-            change['NextRow'] = newid
-            Update(change)
-    # calling routine must call 'SetUndo'
+
     if debug: print "End ReorderReportRows"
 
-# ----
+def AdjustReportRows():
+    """ Ensure that every report has the correct rows and hierarchy
+    
+    The primary steps:
+    - build a list of all of the records that should appear in the report
+    - scan the current rows
+        - remove every row whose record isn't in the Should list
+        - remember the ids for every row whose record is in the Should list
+    - create a row for every record in the Should list that lacks a row
+    - remove parenting loops
+    - give each a row a reference to its parent row
+    - call ReorderReportRows to link the rows
 
-def AdjustReportRows(): 
-    """
-# Reports rows may be affected by table adds or deletions
-#   this routine makes sure that every report has the right number of rows with 
-#   the right links to rows in other tables
-# 1- build a list of all of the data that should appear in the report
-# 2- remove from that list everything that currently appears in the report
-# 3- add additional rows for everything that doesn't
-# question: should I have a flag in report rows for deleted records?
-# answer: no, let the individual reports check. they have to scan through all the rows anyway for hidden rows
-#
-# Don't add report rows for deleted records. This is to fix a bug of Insert, Undo, Redo which was adding
-#   a second report row for the same record.
-# Also not adding rows for children of deleted records. Don't know if this is necessary.
     """
     if debug: print "Start AdjustReportRows"
-    newrow = {'Table': 'ReportRow', 'TableName': None, 'TableID': None, 'NextRow': None}
-    oldrow = {'Table': 'ReportRow', 'ID': None, 'NextRow': None}
-    oldreport = {'Table': 'Report', 'ID': None, 'FirstRow': None}
+    newrow = {'Table': 'ReportRow'}
+    oldrow = {'Table': 'ReportRow'}
 
-    ta, tb, selcol, selval = None, None, None, None  # variables used in selection filters
-        # I'm not sure whether I need to mention them here.
-        # This is a precaution because I want to make sure the variable scope rules let the functions use them.
-    def sela(key):  # if the selection column has the right value, keep it
-        return Database[ta][key].get(selcol) == selval
+    # process all non-deleted reports
+    for rk, r in Report.iteritems():
+        if r.get('zzStatus') == 'deleted': continue
+        newrow['ReportID'] = rk
 
-    def selb(key):  # if selection column in b's parent has the right value, keep it
-        if debug: print "ta, tb, key, selcol", ta, tb, key, selcol
-        parentid = Database[tb][key].get(ta + 'ID')
-        if debug: print 'parentid', parentid
-        # test to make sure parent record exists before trying selection test
-        return Database[ta].has_key(parentid) and Database[ta][parentid].get(selcol) == selval
-
-    for rk, r in Report.iteritems():  # process all active reports
-        if r.get('zzStatus', 'active') == 'deleted': continue
-        newrow["ReportID"] = rk  # make sure any new rows know their parent report is
         rtid = r.get('ReportTypeID')
-        if not rtid or not ReportType.has_key(rtid):
-            if debug: print "invalid ReportType: report", rk, ", type", rtid
+        if rtid not in ReportType:
+            if debug: print "invalid ReportType id: report", rk, ", type", rtid
             continue
         rt = ReportType[rtid]
-        ta, tb = rt.get('TableA'), rt.get('TableB')  # get the names of the tables used
-        if not ta: continue  # silently skip report records w/ no primary table
-        if tb:  # if the report uses two tables
-            # make lists of everything that should be in report
-            selcol, selval = r.get('SelectColumn'), r.get('SelectValue')
-            if selcol:
-                shoulda = filter(sela, Database[ta].keys())
-                shouldb = filter(selb, Database[tb].keys())
-            else:
-                shoulda = Database[ta].keys()
-                shouldb = Database[tb].keys()
-            if debug: print "tablea", ta, "shoulda", shoulda
-            if debug: print "tableb", tb, "shouldb", shouldb
-            # compare that with everything that is already there
-            iref = {}  # insert row references - where to insert table 'b' rows for each table 'a' record
-            loopguard = 0
-            rowk = r.get('FirstRow', 0)
-            saverowk = 0  # this will stay 0 if no report rows
-#            while rowk != 0:    # testing change 040717
-            while rowk and ReportRow.has_key(rowk):
-                saverowk = rowk
-                rr = ReportRow[rowk]
-                t = rr.get('TableName'); id = rr.get('TableID')
-                if t == ta:
-                    try:
-                        shoulda.remove(id)  # remove from list all that have rows
-                    except ValueError:  # occurs if something already in the list shouldn't be there
-                        if debug: print "id that doesn't belong was found in row (a of ab)", id
-                    iref[id] = rowk  # insertion at beginning (may be overridden in elif)
-                    tak = id # most recent table 'a' id, used for insertion at end
-                elif t == tb:
-                    try:
-                        shouldb.remove(id)  # remove from list all that have rows
-                    except ValueError:  # occurs if something already in the list shouldn't be there
-                        if debug: print "id that doesn't belong was found in row (b of ab)", id
-                    iref[tak] = rowk  # current guess at list end
-                # else: pass  # silently ignore any invalid table references
-                            # I am also ignoring any incorrect report rows that don't appear in the linked list
-                rowk = rr.get('NextRow', 0)
-                # saverowk points to the last row in the report
-                loopguard += 1
-                if loopguard > 10000: break
 
-            # add report rows for everything that is missing
-            newrow['TableName'] = ta; newrow['NextRow'] = 0
-            for ka in shoulda:
-                if Database[ta][ka].get("zzStatus") == "deleted": continue # -- don't add rows for deleted
-                newrow['TableID'] = ka
-                undo = Update(newrow, 0)  # don't allow undo on these
-                if saverowk == 0:  # this is the first report row
-                    oldreport['ID'] = rk; oldreport['FirstRow'] = undo['ID']
-                    Update(oldreport, 0)
-                else:
-                    oldrow['ID'] = saverowk; oldrow['NextRow'] = undo['ID']
-                    Update(oldrow, 0)
-                saverowk = undo['ID']
-                iref[ka] = saverowk  # insert 'b's after this 'a'
+        ta, tb = rt.get('TableA'), rt.get('TableB')
+        tableA = Database.get(ta)
+        if not tableA: continue
 
-            newrow['TableName'] = tb;
-            tableb = Database[tb]
-            for kb in shouldb:
-                if tableb[kb].get("zzStatus") == "deleted": continue # -- don't add rows for deleted
-                tak = tableb[kb].get(ta + "ID")  # table 'a' id record of 'b's parent
-                if not tak: continue  # if the key is NULL or 0
-                if Database[ta][tak].get("zzStatus") == "deleted": continue # -- don't add rows for deleted
-                insertafter = iref[tak]  # insert after this row
-                nextr = ReportRow[insertafter].get('NextRow', 0)
-                newrow['TableID'] = kb; newrow['NextRow'] = nextr
-                undo = Update(newrow, 0)
-                oldrow['ID'] = insertafter; oldrow['NextRow'] = undo['ID']
-                Update(oldrow, 0)
-                iref[tak] = undo['ID']
+        if tb == ta:
+            tableB == None
+        else:
+            tableB = Database.get(tb)
 
-        else:  # if the report uses one table
-            # make lists of everything that should be in report
-            selcol, selval = r.get('SelectColumn'), r.get('SelectValue')
-            if selcol:
-                shoulda = filter(sela, Database[ta].keys())
-            else:
-                shoulda = Database[ta].keys()
+        # search for records that should be present
+        should = {}  # {table name: {record id: row id}}
 
-            if debug: print "tablea", ta, "shoulda", shoulda
-            # compare that with everything that is already there
-            rowk = r.get('FirstRow', 0)
-            loopguard = 0
-            saverowk = 0  # this will stay 0 if no report rows
-#            while rowk != 0:  # ditto debug change 040717
-            while rowk and ReportRow.has_key(rowk):
-                saverowk = rowk
-                rr = ReportRow[rowk]
-                id = rr.get('TableID')
-                try:
-                    shoulda.remove(id)  # remove from list all that have rows
-                except ValueError:  # occurs if something already in the list shouldn't be there
-                    if debug: print "id that doesn't belong was found in row", id
-                rowk = rr.get('NextRow', 0)
-                loopguard += 1
-                if loopguard > 10000: break
-            # saverowk points to the last row in the report
+        map = {}
+        selcol = r.get('SelectColumn')
+        if selcol:
+            selval = r.get('SelectValue')
+            for id, record in tableA.iteritems():
+                if record.get(selcol) == selval:
+                    map[id] = None
+        else:
+            for id, record in tableA.iteritems():
+                map[id] = None
+        should[ta] = map
 
-            # add report rows for everything that is missing
-            newrow['TableName'] = ta; newrow['NextRow'] = 0
-            for ka in shoulda:
-                if Database[ta][ka].get("zzStatus") == "deleted": continue # -- don't add rows for deleted
-                newrow['TableID'] = ka
-                undo = Update(newrow, 0)  # don't allow undo on these
-                if saverowk == 0:  # this is the first report row
-                    oldreport['ID'] = rk; oldreport['FirstRow'] = undo['ID']
-                    Update(oldreport, 0)
-                else:
-                    oldrow['ID'] = saverowk; oldrow['NextRow'] = undo['ID']
-                    Update(oldrow, 0)
-                saverowk = undo['ID']
+        if tableB:
+            map = {}
+            for id, record in tableB.iteritems():
+                parent = record.get(ta + 'ID')
+                if parent in should[ta]:
+                    map[id] = None
+            should[tb] = map
+
+        # correlate records with existing rows
+        rlist = []
+        for rowid in GetRowList(rk):
+            r = ReportRow[rowid]
+            t = r.get('TableName')
+            tid = r.get('TableID')
+
+            if t in should and tid in should[t] and not should[t][tid]:
+                should[t][tid] = rowid
+                rlist.append(rowid)
+
+        # create a row for every record that needs one;
+        #   map parent records to child rows
+        parents = {}  # {row id: (parent table, parent id)}
+        godparents = {}
+            # here, parents are same-table; godparents are cross-table
+
+        for t, map in should.iteritems():
+            newrow['TableName'] = t
+            for tid, rowid in map.items():
+                if not rowid:
+                    newrow['TableID'] = tid
+                    rowid = Update(newrow)['ID']
+                    map[tid] = rowid
+                    rlist.append(rowid)
+
+                record = Database[t][tid]
+                parent = record.get(t + 'ID')
+                prec = Database[t].get(parent)
+
+                if prec and prec.get('zzStatus') != 'deleted':
+                    parents[rowid] = t, parent
+                if t != ta:
+                    godparents[rowid] = ta, record.get(ta + 'ID')
+
+        # map parent rows to child rows
+        parentrows = {}  # {child row: parent row}
+
+        for rowid in rlist:
+            lineage = {}
+            while rowid in parents:
+                t, tid = parents.pop(rowid)
+                parent = should[t].get(tid)
+                lineage[rowid] = parent
+                if parent in lineage:
+                    del lineage[parent]
+                rowid = parent
+            parentrows.update(lineage)
+
+        # give each a row a reference to its parent row
+        for rowid in rlist:
+            parent = parentrows.get(rowid)
+            if (not parent) and (rowid in godparents):
+                t, tid = godparents[rowid]
+                parent = should[t].get(tid)
+            if ReportRow[rowid].get('ParentRow') != parent:
+                oldrow['ID'] = rowid
+                oldrow['ParentRow'] = parent
+                Update(oldrow)
+
+        # link the new rowlist
+        ReorderReportRows(rk, rlist)
+
     if debug: print "End AdjustReportRows"
-# end of AdjustReportRows
+
+########## @@@@@@@@@@ End Alex Row/Column Order @@@@@@@@@@ ##########
 
 # --------- Routines to load and save data ---------
 OptionFile = None
@@ -1862,15 +1977,15 @@ def LoadOption(directory=None):
     """ Load the option file.
     """
     global OptionFile, Option
-    if directory: opDir = directory
-    else: opDir = os.getcwd()
+    if not directory:
+        directory = Path
 
-    OptionFile = os.path.join(opDir, "Options.ganttpvo")
-    if debug: print "loading option file", OptionFile
+    OptionFile = os.path.join(directory, "Options.ganttpvo")
+    if debug: print "load option file:", OptionFile
     try: 
         f = open(OptionFile, "rb")
     except IOError:
-        if debug: print "LoadOption io error"
+        if debug: print "option file not found"
     else:
         header = f.readline()  # header will identify need for conversion of earlier versions or use of different file formats
         Option = cPickle.load(f)
@@ -1902,14 +2017,6 @@ def OpenReport(id):
         pos = (r.get('FramePositionX') or -1, r.get('FramePositionY') or -1)
         size = (r.get('FrameSizeW') or 768, r.get('FrameSizeH') or 311)
         OpenReports[id] = GanttReport.GanttReportFrame(id, None, -1, "", pos, size)
-
-#         frame = GanttReport.GanttReportFrame(id, None, -1, "")
-#         if r.get('FramePositionX') and r.get('FramePositionY'):
-#             frame.SetPosition(wx.Point(r['FramePositionX'], r['FramePositionY']))
-#         if r.get('FrameSizeW') and r.get('FrameSizeH'):
-#             frame.SetSize(wx.Size(r['FrameSizeW'], r['FrameSizeH']))
-#         OpenReports[id] = frame
-
         Menu.UpdateWindowMenuItem(id)
         OpenReports[id].Show(True)
     OpenReports[id].Raise()
@@ -1950,13 +2057,15 @@ def MakeReady():
     Holiday =       Database['Holiday']
     ReportType =    Database['ReportType']
     ColumnType =    Database['ColumnType']
-    OtherData =     Database['OtherData']  # used in updates
+    OtherData =     Database['OtherData']
     Other =         OtherData[1]
     NextID =        Database['NextID']
 
+    Database['Other'] = Database['OtherData']  # 'OtherData' is deprecated
+
     SetupDateConv()
     GanttCalculation()
-    AdjustReportRows()  # probably not needed, but the report frames need to set themselves up when opened
+    AdjustReportRows()
     # open all 'open' reports
     for k, v in Report.iteritems():
         if k == 1:
@@ -1967,12 +2076,10 @@ def MakeReady():
                 frame.Refresh()
                 frame.Report.Refresh()  # update displayed data (needed for Main on Windows, not needed on Mac)
         if Database['Report'][k].get('Open'):  OpenReport(k)
-    UndoStack  = []
+    UndoStack = []
     RedoStack = []
     ChangedData = False  # true if database needs to be saved
-    ChangedCalendar, ChangedSchedule, ChangedReport, ChangedRow = False, False, False, False
-
-#    RefreshReports()  # needed?? -- not here, this routine is back end
+    ChangedCalendar = ChangedSchedule = ChangedReport = ChangedRow = False
 
 def LoadContents():
     """ Load the contents of our document into memory. """
@@ -1994,7 +2101,6 @@ def SaveContents():
     global ChangedData
 
     f = open(FileName, "wb")
-    # add write line of text 
     f.write("GanttPV\t0.1\ta\n")
     cPickle.dump(Database, f)
     f.close()
@@ -2036,7 +2142,6 @@ def RunScript(path):
     try:
         execfile(path, name_dict)
     except:
-        import sys
         error_info = sys.exc_info()
         sys.excepthook(*error_info)
 
@@ -2074,8 +2179,7 @@ def AskIfUserWantsToSave(action):
 
 # ------- setup data for testing
 
-SetEmptyData()
-# SetSampleData()
-MakeReady()
+# SetEmptyData()
+# MakeReady()
 
 if debug: print "end Data.py"

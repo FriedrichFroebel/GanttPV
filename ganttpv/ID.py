@@ -19,7 +19,7 @@
 #    along with GanttPV; if not, write to the Free Software
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-# 040414 -first version of this file
+# 040414 - first version of this file
 # 040416 - changes to match revised menus/tool bars in Main & Gantt Report
 # 040423 - added Scripts menu
 # 040505 - renamed some ID's from 'Task' to 'Row'

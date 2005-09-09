@@ -134,11 +134,8 @@ def doExit(event):
 # not used yet
 def doRevert(event):
     """ Respond to the "Revert" menu command. """
-    if not Data.ChangedData: return
-
-    if wxMessageBox("Discard changes made to this file?", "Confirm",
-                    style = wx.OK | wx.CANCEL | wx.ICON_QUESTION
-                   ) == wx.CANCEL: return
+    if not Data.FileName: return
+    if not Data.AskIfUserWantsToSave("reverting to saved version"): return
     Data.LoadContents()
 
 # ---------- Edit Menu -------
@@ -441,80 +438,9 @@ def doForum(event):
 
 def doShowAbout(event):
     """ Respond to the "About GanttPV" menu command. """
-
-    # dialog = wx.Dialog(self, -1, "About GanttPV") # ,
-    #                   #style=wx.DIALOG_MODAL | wx.STAY_ON_TOP)
-    # dialog.SetBackgroundColour(wx.WHITE)
-    # 
-    # panel = wx.Panel(dialog, -1)
-    # panel.SetBackgroundColour(wx.WHITE)
-    # 
-    # panelSizer = wx.BoxSizer(wx.VERTICAL)
-    # 
-    # boldFont = wx.Font(panel.GetFont().GetPointSize(),
-    #                   panel.GetFont().GetFamily(),
-    #                   wx.NORMAL, wx.BOLD)
-    # 
-    # logo = wx.StaticBitmap(panel, -1, wx.Bitmap("images/logo.bmp",
-    #                                               wx.BITMAP_TYPE_BMP))
-    # 
-    # lab1 = wx.StaticText(panel, -1, "GanttPV")
-    # lab1.SetFont(wx.Font(36, boldFont.GetFamily(), wx.ITALIC, wx.BOLD))
-    # lab1.SetSize(lab1.GetBestSize())
-    # 
-    # imageSizer = wx.BoxSizer(wx.HORIZONTAL)
-    # imageSizer.Add(logo, 0, wx.ALL | wx.ALIGN_CENTRE_VERTICAL, 5)
-    # imageSizer.Add(lab1, 0, wx.ALL | wx.ALIGN_CENTRE_VERTICAL, 5)
-    # 
-    # lab2 = wx.StaticText(panel, -1, "A cross-platform, open source project schedulingented " + \
-    #                                "program.")
-    # lab2.SetFont(boldFont)
-    # lab2.SetSize(lab2.GetBestSize())
-    # 
-    # lab3 = wx.StaticText(panel, -1, "GanttPV is release under the GPL" + \
-    #                                "; please")
-    # lab3.SetFont(boldFont)
-    # lab3.SetSize(lab3.GetBestSize())
-    # 
-    # lab4 = wx.StaticText(panel, -1, "enjoy the user of this program. " + \
-    #                                "Support it in any way you like.")
-    # lab4.SetFont(boldFont)
-    # lab4.SetSize(lab4.GetBestSize())
-    # 
-    # lab5 = wx.StaticText(panel, -1, "Author: Brian Christensen " + \
-    #                                    "(brian@SimpleProjectManagement.com)")
-    # lab5.SetFont(boldFont)
-    # lab5.SetSize(lab5.GetBestSize())
-    # 
-    # tnOK = wx.Button(panel, wx.ID_OK, "OK")
-    # 
-    # panelSizer.Add(imageSizer, 0, wx.ALIGN_CENTRE)
-    # panelSizer.Add(10, 10) # Spacer.
-    # panelSizer.Add(lab2, 0, wx.ALIGN_CENTRE)
-    # panelSizer.Add(10, 10) # Spacer.
-    # panelSizer.Add(lab3, 0, wx.ALIGN_CENTRE)
-    # panelSizer.Add(lab4, 0, wx.ALIGN_CENTRE)
-    # panelSizer.Add(10, 10) # Spacer.
-    # panelSizer.Add(lab5, 0, wx.ALIGN_CENTRE)
-    # panelSizer.Add(10, 10) # Spacer.
-    # panelSizer.Add(btnOK, 0, wx.ALL | wx.ALIGN_CENTRE, 5)
-    # 
-    # panel.SetAutoLayout(True)
-    # panel.SetSizer(panelSizer)
-    # panelSizer.Fit(panel)
-    # 
-    # topSizer = wx.BoxSizer(wx.HORIZONTAL)
-    # topSizer.Add(panel, 0, wx.ALL, 10)
-    # 
-    # dialog.SetAutoLayout(True)
-    # dialog.SetSizer(topSizer)
-    # topSizer.Fit(dialog)
-
-    dialog = UI.AboutDialog(None, -1, "About GanttPV") # ,
-                      #style=wx.DIALOG_MODAL | wx.STAY_ON_TOP)
+    dialog = UI.AboutDialog(None, -1, "About GanttPV")
     dialog.Centre()
-
-    btn = dialog.ShowModal()
+    dialog.ShowModal()
     dialog.Destroy()
 
 # -- adjust menus
@@ -523,10 +449,10 @@ def AdjustMenus(self):
     """ Adjust menus and toolbar to reflect the current state. """
     # if debug: print "Adjusting Menus"
     # if debug: print 'self', self
-    canSave   = (Data.FileName != None) and Data.ChangedData
-    canRevert = (Data.FileName != None) and Data.ChangedData
-    canUndo   = len(Data.UndoStack) > 0
-    canRedo   = len(Data.RedoStack) > 0
+    canSave   = bool(Data.FileName and Data.ChangedData)
+    canRevert = bool(Data.FileName and Data.ChangedData)
+    canUndo   = bool(Data.UndoStack and isinstance(Data.UndoStack[-1], str))
+    canRedo   = bool(Data.RedoStack and isinstance(Data.RedoStack[-1], str))
 
     # selection = len(self.selection) > 0
     # onlyOne   = len(self.selection) == 1
@@ -536,28 +462,25 @@ def AdjustMenus(self):
 
     # Enable/disable our menu items.
 
-    self.FileMenu.Enable(wx.ID_SAVE,   canSave)
+    self.FileMenu.Enable(wx.ID_SAVE, canSave)
     # self.FileMenu.Enable(wx.ID_REVERT, canRevert)
 
-    self.Edit.Enable(wx.ID_UNDO,      canUndo)
-    self.Edit.Enable(wx.ID_REDO,      canRedo)
+    self.Edit.Enable(wx.ID_UNDO, canUndo)
+    self.Edit.Enable(wx.ID_REDO, canRedo)
     mbar = self.GetMenuBar()
     undoItem = mbar.FindItemById(wx.ID_UNDO)
     redoItem = mbar.FindItemById(wx.ID_REDO)
     # if debug and canUndo: print 'Data.UndoStack[-1]', Data.UndoStack[-1]
-    # if canUndo: undoItem.SetText('Undo ' + Data.UndoStack[-1])
-        # problem - shouldn't have to test for string, but somehow GanttReport onSelect is called while the top of the 
-        #       stack is not a string
-    if canUndo and isinstance(Data.UndoStack[-1], str): undoItem.SetText('Undo ' + Data.UndoStack[-1])
-    else: undoItem.SetText('Undo')
-    if canRedo: redoItem.SetText('Redo ' + Data.RedoStack[-1])
-    else: redoItem.SetText('Redo')
-        
+    if canUndo: undoItem.SetText('Undo ' + Data.UndoStack[-1] + '\tCTRL-Z')
+    else: undoItem.SetText('Undo\tCTRL-Z')
+    if canRedo: redoItem.SetText('Redo ' + Data.RedoStack[-1] + '\tCTRL-SHIFT-Z')
+    else: redoItem.SetText('Redo\tCTRL-SHIFT-Z')
+
     # self.editMenu.Enable(menu_DUPLICATE, selection)
     # self.editMenu.Enable(menu_EDIT_TEXT, isText)
-    # self.editMenu.Enable(menu_DELETE,    selection)
+    # self.editMenu.Enable(menu_DELETE, selection)
 
-    # self.toolsMenu.Check(menu_SELECT,  self.x == self.y)
+    # self.toolsMenu.Check(menu_SELECT, self.x == self.y)
 
     # Enable/disable our toolbar icons.
     if isinstance(self, UI.MainFrame):
@@ -577,9 +500,9 @@ def AdjustMenus(self):
         self.main_toolbar.EnableTool(ID.EDIT, isSel)
         self.main_toolbar.EnableTool(ID.DUPLICATE, isSel)
         self.main_toolbar.EnableTool(ID.DELETE, isSel)
-        self.main_toolbar.EnableTool(ID.SHOW_HIDDEN_REPORT, True)  # need to adjust toggle based on report's show hidden flag
-        #-------------- the next line needs to be uncommented
-        # self.main_toolbar.Check(ID.SHOW_HIDDEN_REPORT, self.report.get('ShowHidden', False))
+        self.main_toolbar.EnableTool(ID.SHOW_HIDDEN_REPORT, True)
+
+        self.main_toolbar.ToggleTool(ID.SHOW_HIDDEN_REPORT, bool(Data.Report[1].get('ShowHidden')))
 
     elif isinstance(self, UI.ReportFrame):
         r = Data.Report[self.ReportID]
@@ -587,22 +510,22 @@ def AdjustMenus(self):
         rt = Data.ReportType[rtid]
         ta = rt.get('TableA')
         toolbar = self.report_toolbar
-        isTask = ta == "Task"
-        csel = self.Report.GetSelectedCols()  # current selection?
-        rsel = self.Report.GetSelectedRows()  # current selection?
-        isSelCol = len(csel) > 0
-        isSelRow = len(rsel) > 0
+        isTask = (ta == "Task")
+        csel = self.Report.GetSelectedCols()
+        rsel = self.Report.GetSelectedRows()
+        isSelCol = bool(csel)
+        isSelRow = bool(rsel)
         # self.report_toolbar.EnableTool(ID.INSERT_ROW, True)
         self.report_toolbar.EnableTool(ID.DUPLICATE_ROW, isSelRow and isTask)
         self.report_toolbar.EnableTool(ID.DELETE_ROW, isSelRow)
         self.report_toolbar.EnableTool(ID.MOVE_UP, isSelRow)
         self.report_toolbar.EnableTool(ID.MOVE_DOWN, isSelRow)
 
-        self.report_toolbar.EnableTool(ID.PREREQUISITE, isTask and len(rsel) >= 1)
+        self.report_toolbar.EnableTool(ID.PREREQUISITE, isTask and isSelRow)
         self.report_toolbar.EnableTool(ID.ASSIGN_RESOURCE, isTask and len(rsel) == 1)
 
         self.report_toolbar.EnableTool(ID.HIDE_ROW, isSelRow)
-        self.report_toolbar.ToggleTool(ID.SHOW_HIDDEN, r.get('ShowHidden', False))
+        self.report_toolbar.ToggleTool(ID.SHOW_HIDDEN, bool(r.get('ShowHidden')))
 
         # self.report_toolbar.EnableTool(ID.INSERT_COLUMN, True)
         self.report_toolbar.EnableTool(ID.DELETE_COLUMN, isSelCol)
@@ -614,11 +537,6 @@ def AdjustMenus(self):
         # self.report_toolbar.EnableTool(ID.SCROLL_RIGHT, True)
         # self.report_toolbar.EnableTool(ID.SCROLL_RIGHT_FAR, True)
         self.report_toolbar.EnableTool(ID.SCROLL_TO_TASK, isSelRow)
-
-        #control = tb.FindControl(controlid)
-        #flag = tb.GetToolEnabled(toolid)
-        # flag = tb.GetToolState(toolid)  # whether toggled on or off
-        # tb.ToggleTool(toolid, toggleflag)  # flag sets as on or off
 
 
     # if debug: print 'Finished adjusting menus'
@@ -649,7 +567,8 @@ def onShowHidden(self, event):  # self is the frame
     Data.SetUndo('Show Hidden Rows')
     if debug: print "End OnShowHidden"
 
-def Bitmap(file, flags):  # used to replace code that reads bitmaps in UI.py
+def Bitmap(file, flags):
+    """ Replacement for code that reads bitmaps in UI.py """
     parts = file.split('/') # separate out the file name
     path = os.path.join(Data.Path, "icons", parts[-1])
     # if debug: print 'path', path
