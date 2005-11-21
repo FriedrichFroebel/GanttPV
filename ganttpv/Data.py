@@ -75,11 +75,13 @@
 # 050814 - Alexander - added SearchByColumn
 # 050826 - Alexander - rewrote row/column ordering!
 # 050903 - Alexander - fixed bug in AddRow (was aborting when table was empty)
+# 051121 - Brian - add FileSignature number
 
 import datetime, calendar
 import cPickle
 import wx, os, sys
 import Menu, GanttReport
+import random
 
 debug = 1
 if debug: print "load Data.py"
@@ -2062,6 +2064,9 @@ def MakeReady():
     NextID =        Database['NextID']
 
     Database['Other'] = Database['OtherData']  # 'OtherData' is deprecated
+
+    if not Other.get('FileSignature'):
+        Other['FileSignature'] = random.randint(1, 1000000000)
 
     SetupDateConv()
     GanttCalculation()
