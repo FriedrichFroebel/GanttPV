@@ -1047,7 +1047,7 @@ class GanttReportFrame(UI.ReportFrame):
         if debug: print "task status", status
 
         dialog.Centre()  # centers dialog on screen
-        dialog.Show(True)
+        dialog.ShowModal()
 
     def AssignResource(self, event):
         # list resources in alphabetical order
@@ -1106,7 +1106,7 @@ class GanttReportFrame(UI.ReportFrame):
         if debug: print "assignment status", status
 
         dialog.Centre()  # centers dialog on screen
-        dialog.Show(True)
+        dialog.ShowModal()
 
     def OnHide(self, event):
         sel = self.Report.GetSelectedRows()  # user's selection

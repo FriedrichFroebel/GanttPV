@@ -1242,7 +1242,9 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
         tpid[k] = pid
         # if debug: "task's project", k, pid
         tsd = v.get('StartDate')
-        if tsd and tsd < ps[pid]: ps[pid] = tsd  # adjust project start date if task starts are earlier
+        if tsd and (tsd < ps[pid]) and (tsd in DateConv):
+            # adjust project start date if task starts earlier
+            ps[pid] = tsd
 
         # if debug: print "task data", k, v
         p = v.get('TaskID')  # parent task id
@@ -1287,7 +1289,6 @@ def GanttCalculation(): # Gantt chart calculations - all dates are in hours
     # convert project start dates to hours format
     ProjectStartHour = {}; ProjectEndHour = {}
     for k, v in ps.iteritems():  # k = project id, v = start date
-        if not DateConv.has_key(v): continue
         si = DateConv[v]  # get starting date index
         sh = DateInfo[si][1]  # get cum hours for start date
         ProjectStartHour[k] = sh
@@ -1864,7 +1865,7 @@ def AdjustReportRows():
 
     # process all non-deleted reports
     for rk, r in Report.iteritems():
-        if r.get('zzStatus') == 'deleted': continue
+        if r.get('zzStatus') == 'deleted' or r.get('AdjustRowOption'): continue
         newrow['ReportID'] = rk
 
         rtid = r.get('ReportTypeID')
