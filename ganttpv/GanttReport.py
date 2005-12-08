@@ -68,6 +68,7 @@
 # 050630 - Brian - use PlanBarColor to override default bar color
 # 050826 - Alexander - rewrote row/column movement!
 # 050903 - Brian - prevent negative window positions (fix problem caused when Windows iconizes reports)
+# 051207 - Brian - changed GetSelectedRows to work around error in wx that treats shift-click rows as cells not rows
 
 import wx, wx.grid
 import datetime
@@ -565,6 +566,30 @@ class GanttChartGrid(wx.grid.Grid):
         wx.grid.EVT_GRID_SELECT_CELL(self, self.OnSelect)
 
         self.Reset()
+
+    def GetSelectedRows(self):
+        """
+The original implementation returns shift-selected rows as if they were shift-selected cells.
+This routine adds them back as selected rows.
+"""
+        selrow = wx.grid.Grid.GetSelectedRows(self)  # current selection
+        if debug: print "old selrow", selrow
+        seltl = self.GetSelectionBlockTopLeft()  # current selection
+        selbr = self.GetSelectionBlockBottomRight()  # current selection
+        if debug: print "seltl", seltl
+        if debug: print "selbr", selbr
+        cols = self.table.GetNumberCols()
+        if debug: print "cols", cols        
+        if len(seltl):  # if at least one selection of cells
+            for i in range(len(seltl)):
+                ra, ca = seltl[i]
+                rz, cz = selbr[i]
+                if (ca == 0) and (cz == cols - 1):  # these look shift-click selected rows
+                    for newrow in range(ra, rz+1):
+                        if not newrow in selrow: selrow.append(newrow)  # prevent duplicates from being added
+            # selrow.sort()
+        if debug: print "new selrow", selrow
+        return selrow
 
     def OnSelect(self, event):
         # if debug: print "OnSelect"
