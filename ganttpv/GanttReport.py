@@ -573,22 +573,22 @@ The original implementation returns shift-selected rows as if they were shift-se
 This routine adds them back as selected rows.
 """
         selrow = wx.grid.Grid.GetSelectedRows(self)  # current selection
-        if debug: print "old selrow", selrow
+        # if debug: print "old selrow", selrow
         seltl = self.GetSelectionBlockTopLeft()  # current selection
         selbr = self.GetSelectionBlockBottomRight()  # current selection
-        if debug: print "seltl", seltl
-        if debug: print "selbr", selbr
+        # if debug: print "seltl", seltl
+        # if debug: print "selbr", selbr
         cols = self.table.GetNumberCols()
-        if debug: print "cols", cols        
+        # if debug: print "cols", cols        
         if len(seltl):  # if at least one selection of cells
             for i in range(len(seltl)):
                 ra, ca = seltl[i]
                 rz, cz = selbr[i]
-                if (ca == 0) and (cz == cols - 1):  # these look shift-click selected rows
+                if (ca == 0) and (cz == cols - 1):  # these look like shift-click selected rows
                     for newrow in range(ra, rz+1):
                         if not newrow in selrow: selrow.append(newrow)  # prevent duplicates from being added
             # selrow.sort()
-        if debug: print "new selrow", selrow
+        # if debug: print "new selrow", selrow
         return selrow
 
     def OnSelect(self, event):
