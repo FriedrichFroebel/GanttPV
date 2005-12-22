@@ -556,6 +556,7 @@ class GanttChartGrid(wx.grid.Grid):
         self.SetTable(self.table)
 
         self.DisableDragRowSize()
+        self.DisableDragGridSize()
         self.SetRowLabelSize(40)
         self.SetDefaultRowSize(22)  # (22, True) would resize existing rows
         self.SetDefaultColSize(40)  # (40, True) would resize existing columns
@@ -855,7 +856,7 @@ class GanttReportFrame(UI.ReportFrame):
         where = max(sel) + 1
         # print "rlist", rlist
         # print "new", new
-        rlist.insert(where, new)
+        rlist[where:where] = new
         # print "new rlist", rlist
         Data.ReorderReportRows(self.ReportID, rlist)
 

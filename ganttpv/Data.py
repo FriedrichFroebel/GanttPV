@@ -225,9 +225,9 @@ def SetTypes():
              ( 2, 'i', 'd', 'B', False, None, 'ID' ),                # Project/Report
              ( 2, 't', 'd', 'B', True,  140, 'Name'), 
              ( 3, 'i', 'd', 'A', False, None, 'ID' ),                # Task
-             ( 3, 'i', 'd', 'A', False, 80, 'ProjectID' ),
+             ( 3, 'i', 'd', 'A', False, 80, 'ProjectID', 'Project ID' ),
              ( 3, 't', 'd', 'A', True,  140, 'Name' ),
-             ( 3, 'd', 'd', 'A', True,  80, 'StartDate' ),
+             ( 3, 'd', 'd', 'A', True,  80, 'StartDate', 'Start Date' ),
              ( 3, 'i', 'd', 'A', True,  80, 'DurationHours', 'Duration' ),
              ( 3, 'd', 'd', 'A', False, 80, 'CalculatedStartDate', 'Start Date\n(Calculated)' ),
              ( 3, 'd', 'd', 'A', False, 80, 'CalculatedEndDate', 'End Date\n(Calculated)' ),
@@ -241,19 +241,18 @@ def SetTypes():
              # ( 5, 'i', 's', 'X', False, None, 'Day/Hours' ),
              ( 6, 'i', 'd', 'A', False, None, 'ID' ),                # Report
              ( 6, 't', 'd', 'A', True,  140, 'Name' ),
-             # ( 6, 't', 'd', 'a', False, 80, 'TableA' ),
-             # ( 'TableB', 
-             ( 6, 't', 'd', 'A', False, 80, 'SelectColumn' ),
-             ( 6, 'i', 'd', 'A', False, 80, 'SelectValue' ),
-             ( 6, 'i', 'd', 'A', False, None, 'ProjectID' ),
+             # ( 6, 't', 'd', 'a', False, 80, 'TableA', 'Table A' ),
+             ( 6, 't', 'd', 'A', False, 80, 'SelectColumn', 'Select Column' ),
+             ( 6, 'i', 'd', 'A', False, 80, 'SelectValue', 'Select Value' ),
+             ( 6, 'i', 'd', 'A', False, None, 'ProjectID', 'Project ID' ),
              ( 7, 'i', 'd', 'B', False, None, 'ID' ),                # Report/ReportColumn
              ( 7, 'i', 'd', 'B', True,  40, 'Width' ), 
              ( 7, 't', 'd', 'B', True,  140, 'Label' ),
              # ( 7, ' 'A', 'TypeA', 'B', 'TypeB', 'Time', 
              ( 7, 'i', 'd', 'B', True,  40, 'Periods' ),
-             ( 7, 'd', 'd', 'B', True,  80, 'FirstDate' ),
+             ( 7, 'd', 'd', 'B', True,  80, 'FirstDate', 'First Date' ),
              ( 8, 'i', 'd', 'A', False, None, 'ID' ),                # Resource
-             ( 8, 't', 'd', 'A', True,  80, 'ShortName' ),
+             ( 8, 't', 'd', 'A', True,  80, 'ShortName', 'Short Name' ),
              ( 8, 't', 'd', 'A', True,  140, 'Name' ),
              ( 9, 'i', 'd', 'B', False, None, 'ID' ),                # Resource/Assignment
              ( 9, 't', 'i', 'B', True,  140, 'Task/Name' ),
@@ -265,13 +264,13 @@ def SetTypes():
              ( 11, 'i', 'd', 'A', False, None, 'ID' ),               # ReportType
              ( 11, 'i', 'd', 'A', False, 40, 'Also' ),
              ( 11, 't', 'd', 'A', False, 140, 'Name' ),  # 42
-             ( 11, 't', 'd', 'A', False, 100, 'TableA' ),
-             ( 11, 't', 'd', 'A', False, 100, 'TableB' ),
+             ( 11, 't', 'd', 'A', False, 100, 'TableA', 'Table A' ),
+             ( 11, 't', 'd', 'A', False, 100, 'TableB', 'Table B' ),
              ( 11, 't', 'd', 'A', True,  120, 'Label' ),
              ( 12, 'i', 'd', 'B', False, None, 'ID' ),               # ColumnType
-             # ( 12, 'i', 'd', 'B', False, None, 'ReportTypeID' ),
-             ( 12, 't', 'd', 'B', False, None, 'DataType' ),
-             ( 12, 't', 'd', 'B', False, None, 'AccessType' ),
+             # ( 12, 'i', 'd', 'B', False, None, 'ReportTypeID', 'Report Type ID' ),
+             ( 12, 't', 'd', 'B', False, None, 'DataType', 'Data Type' ),
+             ( 12, 't', 'd', 'B', False, None, 'AccessType', 'Access Type' ),
              ( 12, 'b', 'd', 'B', False, None, 'Edit' ),
              ( 12, 't', 'd', 'B', False, 140, 'Name' ),
              ( 12, 't', 'd', 'B', True,  140, 'Label' ),
