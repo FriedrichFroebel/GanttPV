@@ -46,6 +46,7 @@
 # 050503 - Alexander - moved script-running logic to Data.py
 # 050504 - Alexander - implemented Window menu; moved some menu event-handling logic to Menu.py
 # 050515 - Alexander - added MacOpenFile
+# 060131 - Alexander - when the selection is invalid (index >= number of rows), treat it as empty
 
 import wx, wx.grid
 # from wxPython.lib.dialogs import wxMultipleChoiceDialog  # use single selection for adding new reports
@@ -270,8 +271,9 @@ class ProjectReportFrame(UI.MainFrame):
     def OnNewReport(self, event):
         if debug: print "Start OnNewReport"
         # add report to which project?
-        if self.Report.currentItem == None: 
-            if debug: print "self.Report.currentItem == None"
+        sel = self.Report.currentItem
+        if (sel == None) or (sel >= len(self.Report.rows)):
+            if debug: print "no item selected"
             return
         rr = self.Report.reportrow[self.Report.rows[self.Report.currentItem]]  # item -> report row id -> report row record
         rowtable = rr['TableName']
@@ -362,8 +364,9 @@ class ProjectReportFrame(UI.MainFrame):
 
     def OnDuplicate(self, event):
         if debug: print "Start OnDuplicate"
-        if self.Report.currentItem == None: 
-            if debug: print "self.Report.currentItem == None"
+        sel = self.Report.currentItem
+        if (sel == None) or (sel >= len(self.Report.rows)):
+            if debug: print "no item selected"
             return
         rr = self.Report.reportrow[self.Report.rows[self.Report.currentItem]]  # item -> report row id -> report row record
         rowtable = rr['TableName']
@@ -443,8 +446,9 @@ class ProjectReportFrame(UI.MainFrame):
         
     def OnDelete(self, event):
         if debug: print "Start OnDelete"
-        if self.Report.currentItem == None: 
-            if debug: print "self.Report.currentItem == None"
+        sel = self.Report.currentItem
+        if (sel == None) or (sel >= len(self.Report.rows)):
+            if debug: print "no item selected"
             return
         rr = self.Report.reportrow[self.Report.rows[self.Report.currentItem]]  # item -> report row id -> report row record
         rowtable = rr['TableName']
@@ -497,8 +501,9 @@ class ProjectReportFrame(UI.MainFrame):
         if debug: print "End OnDelete"
 
     def OnHide(self, event):
-        if self.Report.currentItem == None: 
-            if debug: print "self.Report.currentItem == None"
+        sel = self.Report.currentItem
+        if (sel == None) or (sel >= len(self.Report.rows)):
+            if debug: print "no item selected"
             return
         Menu.onHide(self.Report, event, [self.Report.currentItem])
 

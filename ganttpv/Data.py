@@ -1,4 +1,4 @@
-  #!/usr/bin/env python
+#!/usr/bin/env python
 # Data Tables - includes update logic, date routines, and gantt calculations
 
 # Copyright 2004, 2005 by Brian C. Christensen
@@ -76,6 +76,7 @@
 # 050826 - Alexander - rewrote row/column ordering!
 # 050903 - Alexander - fixed bug in AddRow (was aborting when table was empty)
 # 051121 - Brian - add FileSignature number
+# 060131 - Alex - save main window size/location
 
 import datetime, calendar
 import cPickle
@@ -728,7 +729,7 @@ def Recalculate(autogantt=True):
 
     UpdateCalendar = ChangedCalendar and autogantt
     UpdateGantt = UpdateCalendar or (ChangedSchedule and autogantt)
-    UpdateReports = ChangedReport or ChangedRow
+    UpdateReports = ChangedReport or ChangedRow or UpdateCalendar
 
     # these routines shouldn't add anything to the undo stack
     if UpdateCalendar:
@@ -814,7 +815,8 @@ def Update(change, push=1):
                     record[c] = newval
                 else:
                     del record[c]
-        CheckChange(undo)
+        if len(undo) > 2:
+            CheckChange(undo)
     else:
         record = {}
         for c, newval in change.iteritems():  # process each field
@@ -1077,6 +1079,7 @@ def _coerce_ymd_to_date(year, month, day):
     if day > calendar.monthrange(equiv_year, month)[1]:
         year += month // 12
         month = month % 12 + 1
+        day = 1
 
     return _ymd_to_date(year, month, day)
 
@@ -1139,7 +1142,7 @@ class _date_info:
         pass
     def __getitem__(self, d):
         dow = d % WeekSize
-        dayhours = WorkWeek[dow]
+        dayhours = HolidayMap.get(d, WorkWeek[dow])
         cumhours = DateToHours(d)
         return dayhours, cumhours, dow
 
@@ -2073,13 +2076,16 @@ def MakeReady():
     AdjustReportRows()
     # open all 'open' reports
     for k, v in Report.iteritems():
-        if k == 1:
-            if OpenReports.has_key(1):
-                frame = OpenReports[1]
-                frame.UpdatePointers(1) # new database
-                Menu.AdjustMenus(frame)
-                frame.Refresh()
-                frame.Report.Refresh()  # update displayed data (needed for Main on Windows, not needed on Mac)
+        if k == 1 and OpenReports.has_key(1):
+            frame = OpenReports[1]
+            pos = (v.get('FramePositionX') or -1, v.get('FramePositionY') or -1)
+            frame.SetPosition(pos)
+            size = (v.get('FrameSizeW') or 422, v.get('FrameSizeH') or 313)
+            frame.SetSize(size)
+            frame.UpdatePointers(1) # new database
+            Menu.AdjustMenus(frame)
+            frame.Refresh()
+            frame.Report.Refresh()  # update displayed data (needed for Main on Windows, not needed on Mac)
         if Database['Report'][k].get('Open'):  OpenReport(k)
     UndoStack = []
     RedoStack = []

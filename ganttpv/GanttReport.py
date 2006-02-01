@@ -69,6 +69,7 @@
 # 050826 - Alexander - rewrote row/column movement!
 # 050903 - Brian - prevent negative window positions (fix problem caused when Windows iconizes reports)
 # 051207 - Brian - changed GetSelectedRows to work around error in wx that treats shift-click rows as cells not rows
+# 060131 - Alexander - store gantt-chart backgrounds in the column attributes (allows print script to override those colors)
 
 import wx, wx.grid
 import datetime
@@ -293,6 +294,8 @@ class GanttChartTable(wx.grid.PyGridTableBase):
         rsize = 22
         for col in xrange(len(self.columns)):
             attr = wx.grid.GridCellAttr()
+            cid = self.columns[col]
+            rc = Data.ReportColumn.get(cid) or {}
             ctid = self.ctypes[col]
             ct = self.columntype.get(ctid) or {}
             ctname = ct.get('Name')
@@ -304,13 +307,23 @@ class GanttChartTable(wx.grid.PyGridTableBase):
                     rsize = renderer.rowSize
                 attr.SetReadOnly(True)
                 attr.SetRenderer(renderer)
+                cid = self.columns[col]
+                rc = Data.ReportColumn.get(cid) or {}
+                fdate = rc.get('FirstDate')
+                if fdate and Data.ValidDate(fdate):
+                    ix = Data.StringToDate(fdate)
+                else:
+                    ix = Data.TodayDate()
+                if Data.GetPeriodInfo(ctname, ix, of)[0]:
+                    bgcolor = Data.Option.get('WorkDay', wx.BLUE)
+                else:
+                    bgcolor = Data.Option.get('NotWorkDay', wx.BLUE)
+                attr.SetBackgroundColour(bgcolor)
             else:
                 if ctname == 'Name':
                     sub_renderer = grid.GetDefaultRenderer()
                     renderer = IndentedRenderer(self, sub_renderer)
                     attr.SetRenderer(renderer)
-                cid = self.columns[col]
-                rc = Data.ReportColumn.get(cid) or {}
                 csize = rc.get('Width') or grid.GetDefaultColSize()
                 grid.SetColSize(col, csize)
                 readonly = not ct.get('Edit')
@@ -461,10 +474,8 @@ class GanttCellRenderer(wx.grid.PyGridCellRenderer):
             backcolor = o.get('WorkDaySelected', wx.BLUE)
         elif isSelected:
             backcolor = o.get('NotWorkDaySelected', wx.BLUE)
-        elif dh:
-            backcolor = o.get('WorkDay', wx.BLUE)
         else:
-            backcolor = o.get('NotWorkDay', wx.BLUE)
+            backcolor = attr.GetBackgroundColour()
 
         dc.SetBrush(wx.Brush(backcolor, wx.SOLID))
         dc.SetPen(wx.Pen(backcolor, 1, wx.SOLID))
@@ -601,8 +612,8 @@ This routine adds them back as selected rows.
         event.Skip()
 
     def UpdateAttrs(self):
-         self.table._updateColAttrs(self)
          self.table._updateRowAttrs(self)
+         self.table._updateColAttrs(self)
 
 # UpdateColumnWidths is no good -- if the column pointers have changed, then the
 # column attributes must be updated, to preserve read-only status and cell renderers.

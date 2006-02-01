@@ -486,7 +486,7 @@ def AdjustMenus(self):
     if isinstance(self, UI.MainFrame):
         item = self.Report.currentItem
         if debug: "item", item
-        isSel = item != None
+        isSel = (item != None) and (item < len(self.Report.rows))
         if debug: "isSel", isSel
         # needed only if menus change depending on whether project or report is selected
         # selReport = False; selProject = False
