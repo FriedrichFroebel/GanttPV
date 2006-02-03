@@ -1070,16 +1070,14 @@ def _ymd_to_date(year, month, day):
 
 def _coerce_ymd_to_date(year, month, day):
     # wrap month around year (e.g. 2005-15 -> 2006-03)
-    # if day is too high, use start of following month (e.g. Feb 31 -> Mar 1)
+    # if day is too high, use the last day of that month
 
     year += (month - 1) // 12
     month = (month - 1) % 12 + 1
 
     equiv_year = (year - BaseYear) % Years_per_Calendar_Cycle + BaseYear
-    if day > calendar.monthrange(equiv_year, month)[1]:
-        year += month // 12
-        month = month % 12 + 1
-        day = 1
+    month_size = calendar.monthrange(equiv_year, month)[1]
+    day = min(day, month_size)
 
     return _ymd_to_date(year, month, day)
 
@@ -2074,36 +2072,42 @@ def MakeReady():
     SetupDateConv()
     GanttCalculation()
     AdjustReportRows()
-    # open all 'open' reports
+
+    # adjust main report
+    if 1 in OpenReports:
+        v = Report[1]
+        pos = (v.get('FramePositionX') or -1, v.get('FramePositionY') or -1)
+        size = (v.get('FrameSizeW') or 422, v.get('FrameSizeH') or 313)
+        frame = OpenReports[1]
+        frame.Show(False)
+        frame.SetPosition(pos)
+        frame.SetSize(size)
+        frame.UpdatePointers(1) # new database
+        frame.Show(True)
+
+    # open reports
     for k, v in Report.iteritems():
-        if k == 1 and OpenReports.has_key(1):
-            frame = OpenReports[1]
-            pos = (v.get('FramePositionX') or -1, v.get('FramePositionY') or -1)
-            frame.SetPosition(pos)
-            size = (v.get('FrameSizeW') or 422, v.get('FrameSizeH') or 313)
-            frame.SetSize(size)
-            frame.UpdatePointers(1) # new database
-            Menu.AdjustMenus(frame)
-            frame.Refresh()
-            frame.Report.Refresh()  # update displayed data (needed for Main on Windows, not needed on Mac)
-        if Database['Report'][k].get('Open'):  OpenReport(k)
+        if v.get('Open'): OpenReport(k)
+
     UndoStack = []
     RedoStack = []
     ChangedData = False  # true if database needs to be saved
     ChangedCalendar = ChangedSchedule = ChangedReport = ChangedRow = False
 
-def LoadContents():
+    RefreshReports()
+
+def LoadContents(path=None):
     """ Load the contents of our document into memory. """
     global Database
-    CloseReports()
     try:
-        f = open(FileName, "rb")
+        f = open(path or FileName, "rb")
         header = f.readline()  # add read line of text - will allow conversion of earlier versions or use of different file formats
         Database = cPickle.load(f)
         f.close()
     except IOError:
         if debug: print "LoadContents io error"
     else:
+        CloseReports()
         MakeReady()
         return True
 
@@ -2135,8 +2139,8 @@ def OpenFile(path):
 def OpenDatabase(path):
     """ Open a database file (.ganttpv) """
     global FileName
+    if not LoadContents(path): return
     FileName = path
-    if not LoadContents(): return
     title = os.path.basename(path)
     OpenReports[1].SetTitle(title)
     OpenReports[1].Show(True)

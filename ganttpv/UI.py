@@ -25,6 +25,7 @@
 # 050515 - Alexander - changed some filenames to use my latest icons
 # 050518 - Alexander - fixed a serious scrollbar bug by commenting out SetSizeHints calls
 # 050518 - Alexander - changed ReportFrame to use the size given in its __init__ arguments
+# 060203 - Alexander - added Revert to FileMenu
 
 import wx, ID, Menu
 
@@ -39,13 +40,14 @@ class MainFrame(wx.Frame):
         self.main_menubar = wx.MenuBar()
         self.SetMenuBar(self.main_menubar)
         self.FileMenu = wx.Menu()
-        self.FileMenu.Append(wx.ID_NEW, "New\tCTRL-N", "New project file", wx.ITEM_NORMAL)
-        self.FileMenu.Append(wx.ID_OPEN, "Open...\tCTRL-O", "Open existing project file", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_NEW, "New\tCTRL-N", "New database file", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_OPEN, "Open...\tCTRL-O", "Open existing database file", wx.ITEM_NORMAL)
         self.FileMenu.AppendSeparator()
-        self.FileMenu.Append(wx.ID_CLOSE, "Close\tCTRL-W", "Close project file", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_CLOSE, "Close\tCTRL-W", "Close database file", wx.ITEM_NORMAL)
         self.FileMenu.Append(wx.ID_CLOSE_ALL, "Close Reports\tCTRL-ALT-W", "Close grid reports")
-        self.FileMenu.Append(wx.ID_SAVE, "Save\tCTRL-S", "Save project file", wx.ITEM_NORMAL)
-        self.FileMenu.Append(wx.ID_SAVEAS, "Save As...\tCTRL-SHIFT-S", "Save project file with new name", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_SAVE, "Save\tCTRL-S", "Save database file", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_SAVEAS, "Save As...\tCTRL-SHIFT-S", "Save database file with new name", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_REVERT, "Revert to Saved", "Revert to saved version of database file", wx.ITEM_NORMAL)
         self.FileMenu.Append(wx.ID_EXIT, "Quit\tCTRL-Q", "Quit program", wx.ITEM_NORMAL)
         self.main_menubar.Append(self.FileMenu, "File")
         self.Edit = wx.Menu()
@@ -132,13 +134,14 @@ class ReportFrame(wx.Frame):
         self.report_menubar = wx.MenuBar()
         self.SetMenuBar(self.report_menubar)
         self.FileMenu = wx.Menu()
-        self.FileMenu.Append(wx.ID_NEW, "New\tCTRL-N", "New project file", wx.ITEM_NORMAL)
-        self.FileMenu.Append(wx.ID_OPEN, "Open...\tCTRL-O", "Open existing project file", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_NEW, "New\tCTRL-N", "New database file", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_OPEN, "Open...\tCTRL-O", "Open existing database file", wx.ITEM_NORMAL)
         self.FileMenu.AppendSeparator()
-        self.FileMenu.Append(wx.ID_CLOSE, "Close\tCTRL-W", "Close project file", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_CLOSE, "Close\tCTRL-W", "Close database file", wx.ITEM_NORMAL)
         self.FileMenu.Append(wx.ID_CLOSE_ALL, "Close Reports\tCTRL-ALT-W", "Close grid reports")
-        self.FileMenu.Append(wx.ID_SAVE, "Save\tCTRL-S", "Save project file", wx.ITEM_NORMAL)
-        self.FileMenu.Append(wx.ID_SAVEAS, "Save As...\tCTRL-SHIFT-S", "Save project file with new name", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_SAVE, "Save\tCTRL-S", "Save database file", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_SAVEAS, "Save As...\tCTRL-SHIFT-S", "Save database file with new name", wx.ITEM_NORMAL)
+        self.FileMenu.Append(wx.ID_REVERT, "Revert to Saved", "Revert to saved version of database file", wx.ITEM_NORMAL)
         self.FileMenu.Append(wx.ID_EXIT, "Quit\tCTRL-Q", "Quit program", wx.ITEM_NORMAL)
         self.report_menubar.Append(self.FileMenu, "File")
         self.Edit = wx.Menu()

@@ -62,8 +62,8 @@ def doNew(event):
         if debug: print "Setup empty database"
         Data.CloseReports()  # close all open reports except #1
         Data.SetEmptyData()
-        Data.MakeReady()
         Data.OpenReports[1].SetTitle("Main")
+        Data.MakeReady()
     if debug: print "End doNew"
 
 def doOpen(event):
@@ -131,7 +131,6 @@ def doExit(event):
     if Data.App:
         Data.App.ExitMainLoop()
 
-# not used yet
 def doRevert(event):
     """ Respond to the "Revert" menu command. """
     if not Data.FileName: return
@@ -463,7 +462,7 @@ def AdjustMenus(self):
     # Enable/disable our menu items.
 
     self.FileMenu.Enable(wx.ID_SAVE, canSave)
-    # self.FileMenu.Enable(wx.ID_REVERT, canRevert)
+    self.FileMenu.Enable(wx.ID_REVERT, canRevert)
 
     self.Edit.Enable(wx.ID_UNDO, canUndo)
     self.Edit.Enable(wx.ID_REDO, canRedo)

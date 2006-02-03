@@ -747,7 +747,7 @@ class GanttReportFrame(UI.ReportFrame):
         wx.EVT_MENU(self, wx.ID_CLOSE_ALL, Menu.doCloseReports)
         wx.EVT_MENU(self, wx.ID_SAVE,   Menu.doSave)
         wx.EVT_MENU(self, wx.ID_SAVEAS, Menu.doSaveAs)
-        # wx.EVT_MENU(self, wx.ID_REVERT, Menu.doRevert)
+        wx.EVT_MENU(self, wx.ID_REVERT, Menu.doRevert)
         wx.EVT_MENU(self, wx.ID_EXIT, Menu.doExit)
 
         # edit menu events
