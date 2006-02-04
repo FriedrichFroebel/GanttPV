@@ -115,7 +115,7 @@ def doSaveAs(event):
     fileName = os.path.join(os.getcwd(), fileName)
     os.chdir(curDir)
 
-    title = os.path.basename(fileName)
+    title = os.path.basename(fileName) + " (Main Window)"
     Data.OpenReports[1].SetTitle(title)
 
     Data.FileName = fileName

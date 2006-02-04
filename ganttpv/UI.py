@@ -25,7 +25,7 @@
 # 050515 - Alexander - changed some filenames to use my latest icons
 # 050518 - Alexander - fixed a serious scrollbar bug by commenting out SetSizeHints calls
 # 050518 - Alexander - changed ReportFrame to use the size given in its __init__ arguments
-# 060203 - Alexander - added Revert to FileMenu
+# 060203 - Alexander - added Revert to FileMenu; call them database files instead of project files
 
 import wx, ID, Menu
 
@@ -55,7 +55,7 @@ class MainFrame(wx.Frame):
         self.Edit.Append(wx.ID_REDO, "Redo\tCTRL-SHIFT-Z", "Redo change", wx.ITEM_NORMAL)
         self.main_menubar.Append(self.Edit, "Edit")
         self.Script = wx.Menu()
-        self.Script.Append(ID.FIND_SCRIPTS, "Find Scripts", "", wx.ITEM_NORMAL)
+        self.Script.Append(ID.FIND_SCRIPTS, "Find Scripts", "Refresh script menu", wx.ITEM_NORMAL)
         self.main_menubar.Append(self.Script, "Script")
         self.WindowMenu = wx.Menu()
         self.WindowMenu.Append(ID.FIRST_WINDOW, "Main Window\tCTRL-1", "Bring the main window to front", wx.ITEM_CHECK)
@@ -63,9 +63,9 @@ class MainFrame(wx.Frame):
         self.main_menubar.Append(self.WindowMenu, "Window")
         self.Help = wx.Menu()
         self.Help.Append(wx.ID_ABOUT, "About GanttPV", "", wx. ITEM_NORMAL)
-        self.Help.Append(ID.HOME_PAGE, "GanttPV Home", "", wx.ITEM_NORMAL)
-        self.Help.Append(ID.HELP_PAGE, "Help Page", "", wx.ITEM_NORMAL)
-        self.Help.Append(ID.FORUM, "Forum", "", wx.ITEM_NORMAL)
+        self.Help.Append(ID.HOME_PAGE, "GanttPV Home", "Open GanttPV home page in web browser", wx.ITEM_NORMAL)
+        self.Help.Append(ID.HELP_PAGE, "Help Page", "Open GanttPV help page in web browser", wx.ITEM_NORMAL)
+        self.Help.Append(ID.FORUM, "Forum", "Open GanttPV user forum in web browser", wx.ITEM_NORMAL)
         self.main_menubar.Append(self.Help, "&Help")
         # Menu Bar end
         self.main_statusbar = self.CreateStatusBar(1, 0)
@@ -149,16 +149,16 @@ class ReportFrame(wx.Frame):
         self.Edit.Append(wx.ID_REDO, "Redo\tCTRL-SHIFT-Z", "Redo change", wx.ITEM_NORMAL)
         self.report_menubar.Append(self.Edit, "Edit")
         self.Script = wx.Menu()
-        self.Script.Append(ID.FIND_SCRIPTS, "Find Scripts", "", wx.ITEM_NORMAL)
+        self.Script.Append(ID.FIND_SCRIPTS, "Find Scripts", "Refresh script menu", wx.ITEM_NORMAL)
         self.report_menubar.Append(self.Script, "Script")
         self.WindowMenu = wx.Menu()
         self.WindowMenu.Append(ID.FIRST_WINDOW, "Main Window\tCTRL-1", "Bring the main window to front", wx.ITEM_CHECK)
         self.report_menubar.Append(self.WindowMenu, "Window")
         self.Help = wx.Menu()
         self.Help.Append(wx.ID_ABOUT, "About GanttPV", "", wx.ITEM_NORMAL)
-        self.Help.Append(ID.HOME_PAGE, "GanttPV Home", "", wx.ITEM_NORMAL)
-        self.Help.Append(ID.HELP_PAGE, "Help Page", "", wx.ITEM_NORMAL)
-        self.Help.Append(ID.FORUM, "Forum", "", wx.ITEM_NORMAL)
+        self.Help.Append(ID.HOME_PAGE, "GanttPV Home", "Open GanttPV home page in web browser", wx.ITEM_NORMAL)
+        self.Help.Append(ID.HELP_PAGE, "Help Page", "Open GanttPV help page in web browser", wx.ITEM_NORMAL)
+        self.Help.Append(ID.FORUM, "Forum", "Open GanttPV user forum in web browser", wx.ITEM_NORMAL)
         self.report_menubar.Append(self.Help, "&Help")
         # Menu Bar end
         self.report_statusbar = self.CreateStatusBar(1, 0)
