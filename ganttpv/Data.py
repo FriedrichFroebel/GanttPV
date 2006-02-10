@@ -772,9 +772,9 @@ def _Do(fromstack, tostack):
             redo = Update(change, 0)  # '0' means don't put change into Undo Stack
             tostack.append(redo)
         tostack.append(savemessage)
+        ChangedData = True  # file needs to be saved
         Recalculate()
         ChangedRow = False  # already handled by last SetUndo
-        ChangedData = True  # file needs to be saved
 
 def DoUndo():
     _Do(UndoStack, RedoStack)
@@ -2121,6 +2121,7 @@ def SaveContents():
     f.close()
 
     ChangedData = False
+    RefreshReports()
 
 def GetScriptDirectory():
     """ Return the directory to search for script files """
@@ -2141,7 +2142,7 @@ def OpenDatabase(path):
     global FileName
     if not LoadContents(path): return
     FileName = path
-    title = os.path.basename(path)
+    title = os.path.basename(path) + " (Main Window)"
     OpenReports[1].SetTitle(title)
     OpenReports[1].Show(True)
 
