@@ -77,6 +77,7 @@
 # 050903 - Alexander - fixed bug in AddRow (was aborting when table was empty)
 # 051121 - Brian - add FileSignature number
 # 060131 - Alex - save main window size/location
+# 060211 - Alex - changed AddRow and AddReportType so that, by default, they activate the records they modify
 
 import datetime, calendar
 import cPickle
@@ -556,6 +557,8 @@ def AddRow(change):
         if v.get('Name') == changeName:
             change['ID'] = k
             break
+    if 'zzStatus' not in change:
+        change['zzStatus'] = None  # default to active status
     Update(change)
 
 def AddReportType(reportType, columnTypes):
@@ -591,6 +594,8 @@ def AddReportType(reportType, columnTypes):
     change["Table"] = 'ReportType'
     if rtid:  # already exists
         change['ID'] = rtid
+        if 'zzStatus' not in change:
+            change['zzStatus'] = None  # default to active status
         Update(change)
         oldRT = True
     else:  # new
@@ -612,6 +617,8 @@ def AddReportType(reportType, columnTypes):
         if ctid: 
             change['ID'] = ctid  # if column type already exists, change this to an update instead of an add
             if change.has_key('Label'): del change['Label']  # don't change label on existing column type, is test necessary?
+            if 'zzStatus' not in change:
+                change['zzStatus'] = None  # default to active status
         change["Table"] = "ColumnType"
         change["ReportTypeID"] = rtid
 
@@ -820,16 +827,16 @@ def Update(change, push=1):
     else:
         record = {}
         for c, newval in change.iteritems():  # process each field
+            if c == 'Table': continue
             if newval or newval == 0:
                 record[c] = newval
+                undo[c] = None
         undo['zzStatus'] = 'deleted'
         id = NextID[tname]
         if debug: print "Added new record:", id
         NextID[tname] = id + 1
         record['ID'] = undo['ID'] = id
-        CheckChange(record)
-        ChangedRow = True  # CheckChange doesn't recognize this for new records
-        del record['Table']  # saves space
+        CheckChange(undo)
         table[id] = record
     if push: UndoStack.append(undo)
     return undo
@@ -2111,11 +2118,11 @@ def LoadContents(path=None):
         MakeReady()
         return True
 
-def SaveContents():
+def SaveContents(path=None):
     """ Save the contents of our document to disk. """
     global ChangedData
 
-    f = open(FileName, "wb")
+    f = open(path or FileName, "wb")
     f.write("GanttPV\t0.1\ta\n")
     cPickle.dump(Database, f)
     f.close()

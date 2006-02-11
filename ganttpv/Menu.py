@@ -42,6 +42,7 @@
 # 050515 - Alexander - fixed a bug in the Window menu that prevented the application build from starting
 # 050527 - Alexander - sort Script menu-items (required for Windows platform)
 # 050601 - Alexander - fixed a bug in the order of dependency chaining
+# 060211 - Alexander - added "Revert" to File menu
 
 import wx, os, webbrowser
 import Data, ID, UI
@@ -134,7 +135,22 @@ def doExit(event):
 def doRevert(event):
     """ Respond to the "Revert" menu command. """
     if not Data.FileName: return
-    if not Data.AskIfUserWantsToSave("reverting to saved version"): return
+
+    if Data.ChangedData:
+        response = wx.MessageBox(
+            "Save changes to new file before reverting to prior version?",
+            "Confirm", wx.YES_NO | wx.CANCEL)
+        if response == wx.YES:
+            path = wx.FileSelector("Save File As", "Saving",
+                default_filename='Untitled.ganttpv',
+                default_extension="ganttpv",
+                wildcard="*.ganttpv",
+                flags = wx.SAVE | wx.OVERWRITE_PROMPT)
+            if not path: return
+            Data.SaveContents(path)
+        elif response == wx.CANCEL:
+            return
+
     Data.LoadContents()
 
 # ---------- Edit Menu -------

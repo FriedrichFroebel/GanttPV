@@ -70,6 +70,7 @@
 # 050903 - Brian - prevent negative window positions (fix problem caused when Windows iconizes reports)
 # 051207 - Brian - changed GetSelectedRows to work around error in wx that treats shift-click rows as cells not rows
 # 060131 - Alexander - store gantt-chart backgrounds in the column attributes (allows print script to override those colors)
+# 060211 - Alexander - when inserting before a subtask, give the same parent to the new row
 
 import wx, wx.grid
 import datetime
@@ -814,26 +815,39 @@ class GanttReportFrame(UI.ReportFrame):
         tb = rt.get('TableB')  # if two table report all inserts go at the end (less confusing to user)
         each = rt.get('AllOrEach') in ['both', 'each']
 
+        sel = self.Report.GetSelectedRows()  # current selection
+        if sel:
+            row = min(sel)
+            rowid = self.Report.table.rows[row]
+            rr = Data.ReportRow[rowid]
+            while row > 0 and rr['TableName'] != ta:  # find a primary row
+                row -= 1
+                rowid = self.Report.table.rows[row]
+                rr = Data.ReportRow[rowid]
+
         change = { 'Table': ta, 'Name': '--' }  # new record because no ID specified
         if ta == 'Task' or each:
             pid = r.get('ProjectID')
             change['ProjectID'] = pid 
         elif ta in ('Report', 'ReportColumn', 'ReportRow', 'ReportType', 'ColumnType'): return  # need special handling
+        if sel:
+            tid = rr['TableID']
+            record = Data.Database[ta].get(tid) or {}
+            change[ta + 'ID'] = record.get(ta + 'ID')
         undo = Data.Update(change)
         newid = undo['ID']
 
-        change = { 'Table': 'ReportRow', 'ReportID': self.ReportID, 'TableName': ta, 'TableID': newid }  
+        change = { 'Table': 'ReportRow', 'ReportID': self.ReportID, 'TableName': ta, 'TableID': newid }
+        if sel:
+            change['ParentRow'] = rr.get('ParentRow')
         undo = Data.Update(change)  # created here to control where inserted
         newrowid = undo['ID']
 
         rlist = Data.GetRowList(self.ReportID)  # list of row id's in display order
 
-        s = self.Report.GetSelectedRows()  # current selection
-
-        if not s: rlist.append(newrowid)  # if no selection add to end
+        if not sel: rlist.append(newrowid)  # if no selection add to end
         else:
-            rid = self.Report.table.rows[min(s)] # convert to rowid
-            pos = rlist.index(rid)  # find position of selected row (should always work)
+            pos = rlist.index(rowid)  # find position of selected row (should always work)
             rlist.insert(pos, newrowid)  # insert before first selected row
         Data.ReorderReportRows(self.ReportID, rlist)
 
